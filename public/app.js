@@ -12,7 +12,7 @@ import { iconMarkup } from "./icons.js";
 import { createFeatureUI } from "./features.js";
 const app = document.querySelector("#app");
 let me,
-  page = location.hash.slice(1) || "dashboard",
+  page = location.hash.slice(1) || "inbox",
   query = "",
   resources = [],
   events;
@@ -27,7 +27,6 @@ const E = (s) =>
   );
 const icons = iconMarkup;
 const titles = {
-  dashboard: "总览",
   inbox: "会话收件箱",
   visitors: "访客管理",
   replies: "快捷回复",
@@ -39,8 +38,8 @@ const titles = {
   channel: "接入平台",
   model: "模型管理",
   extensions: "技能与设备",
-  members: "团队成员",
-  teams: "接待团队",
+  members: "团队管理",
+  teams: "团队管理",
   tags: "标签管理",
   audit: "操作记录",
   settings: "设置",
@@ -111,14 +110,7 @@ const extensionsUI = createExtensionsUI({ api, E, modal, toast });
 const providerUI = createProviderUI({ api, E, modal, toast });
 const allowedPage = (p) =>
   me?.role === "admin" ||
-  [
-    "dashboard",
-    "inbox",
-    "knowledge",
-    "visitors",
-    "replies",
-    "settings",
-  ].includes(p);
+  ["inbox", "knowledge", "visitors", "replies", "settings"].includes(p);
 async function api(p, opts = {}) {
   const r = await fetch("/api" + p, {
     ...opts,
@@ -200,7 +192,6 @@ async function boot() {
     events.onmessage = () => {
       notifications.poll();
       if (page === "inbox") inboxUI.refresh();
-      else if (page === "dashboard") render();
     };
     render();
   } catch (e) {
@@ -271,16 +262,32 @@ async function invitationScreen(token) {
   }
 }
 function auth(setup) {
-  app.innerHTML = `<main class="login"><section class="login-card"><div class="brand"><span class="mark">F</span>FastCat Support</div><h1>${setup ? "创建你的服务空间" : "欢迎回来"}</h1><p class="muted">${setup ? "从第一段对话开始，连接每一位客户。" : "登录以继续为客户提供帮助。"}</p><form>${setup ? field("name", "你的姓名", "请输入姓名") : ""}${field("email", "邮箱", "name@company.com", "email")}${field("password", "密码", setup ? "至少 10 位" : "请输入密码", "password")}<p class="error" id="auth-error" role="alert"></p><button class="primary">${setup ? "创建工作空间" : "登录工作台"}</button></form><p class="small">FastCat Support · 让服务更进一步</p></section></main>`;
+  app.innerHTML = `<main class="login"><section class="login-card"><div class="brand"><span class="mark">F</span>FastCat Support</div><h1>${setup ? "设置管理员账号" : "欢迎回来"}</h1><p class="muted">${setup ? "首次部署，请设置管理员姓名、登录邮箱和密码。此步骤仅需完成一次。" : "登录以继续为客户提供帮助。"}</p><form>${setup ? field("name", "你的姓名", "请输入姓名") : ""}${field("email", "邮箱", "name@company.com", "email")}${field("password", "密码", setup ? "至少 10 位" : "请输入密码", "password")}${setup ? field("confirmPassword", "确认密码", "再次输入密码", "password") : ""}<p class="error" id="auth-error" role="alert"></p><button class="primary">${setup ? "创建管理员并进入工作台" : "登录工作台"}</button></form><p class="small">FastCat Support · 让服务更进一步</p></section></main>`;
+  app.querySelector('[name="password"]').autocomplete = setup
+    ? "new-password"
+    : "current-password";
+  app.querySelector('[name="email"]').autocomplete = "username";
+  if (setup) {
+    app.querySelector('[name="password"]').minLength = 10;
+    app.querySelector('[name="confirmPassword"]').autocomplete = "new-password";
+  }
   app.querySelector("form").onsubmit = async (e) => {
     e.preventDefault();
+    const values = Object.fromEntries(new FormData(e.target));
+    if (setup && values.password !== values.confirmPassword) {
+      document.querySelector("#auth-error").textContent =
+        "两次输入的密码不一致";
+      return;
+    }
+    delete values.confirmPassword;
     const b = e.submitter;
     b.disabled = true;
     try {
       await api(setup ? "/setup" : "/login", {
         method: "POST",
-        body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
+        body: JSON.stringify(values),
       });
+      location.hash = "inbox";
       boot();
     } catch (err) {
       document.querySelector("#auth-error").textContent = err.message;
@@ -289,21 +296,55 @@ function auth(setup) {
     }
   };
 }
-function shell() {
-  app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="mark">F</span><span class="brand-text">FastCat<span style="font-weight:400"> Support</span></span></div><div class="nav-label">工作空间</div><nav class="nav">${Object.entries(
-    titles,
-  )
-    .filter(([key]) => allowedPage(key))
-    .map(
-      ([k, v]) =>
-        `${{ dashboard: "服务工作台", agent: "AI 与渠道", members: "工作空间管理" }[k] || (me.role !== "admin" && k === "knowledge" ? "共享知识" : "") ? `<div class="nav-group-label">${{ dashboard: "服务工作台", agent: "AI 与渠道", members: "工作空间管理" }[k] || "共享知识"}</div>` : ""}<button data-page="${k}" aria-label="${v}"><span class="icon">${icons[k] || icons.tool}</span><span class="nav-text">${v}</span></button>`,
+let agentMenuOpen = false;
+const agentChildren = ["workflow", "tool", "extensions"];
+function navigationMarkup() {
+  const button = (key, label = titles[key]) =>
+    `<button data-page="${key}" aria-label="${label}"><span class="icon">${icons[key] || icons.tool}</span><span class="nav-text">${label}</span></button>`;
+  return Object.keys(titles)
+    .filter(
+      (k) => allowedPage(k) && !agentChildren.includes(k) && k !== "teams",
     )
-    .join(
-      "",
-    )}</nav><div class="sidebar-foot"><div class="row"><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div><div class="small">${E(me.name)}<br>${me.role === "admin" ? "管理员" : "客服"}</div></div><button id="logout" class="quiet small">退出登录</button></div></aside><main><header class="topbar"><strong id="breadcrumb"></strong><div class="right"><button id="global-search-button" class="search-launcher" aria-label="搜索与快速跳转"><span>搜索工作空间</span><kbd>⌘ K</kbd></button><button id="theme-toggle" class="quiet" aria-label="切换主题" title="切换明暗主题">◐</button><select id="own-availability" class="presence-select" aria-label="我的接待状态"><option value="available">可接待</option><option value="away">暂离</option><option value="offline">不接待</option></select><button id="open-widget" class="quiet">↗ 访客端预览</button><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div></div></header><div id="view"></div></main></div>`;
+    .map((k) => {
+      const label =
+        { inbox: "服务工作台", agent: "AI 与渠道", members: "工作空间管理" }[
+          k
+        ] || (me.role !== "admin" && k === "knowledge" ? "共享知识" : "");
+      const heading = label
+        ? `<div class="nav-group-label">${label}</div>`
+        : "";
+      if (k === "agent")
+        return (
+          heading +
+          `<div class="nav-parent"><div class="nav-parent-row">${button(k)}<button id="toggle-agent-menu" class="nav-disclosure" aria-label="展开智能体子菜单" aria-expanded="false" aria-controls="agent-submenu">⌄</button></div><div id="agent-submenu" class="nav-submenu" hidden>${agentChildren.map((k) => button(k)).join("")}</div></div>`
+        );
+      return heading + button(k);
+    })
+    .join("");
+}
+function updateAgentMenu() {
+  const menu = document.querySelector("#agent-submenu"),
+    toggle = document.querySelector("#toggle-agent-menu");
+  if (!menu) return;
+  menu.hidden = !agentMenuOpen;
+  toggle.setAttribute("aria-expanded", String(agentMenuOpen));
+  toggle.setAttribute(
+    "aria-label",
+    agentMenuOpen ? "收起智能体子菜单" : "展开智能体子菜单",
+  );
+}
+function shell() {
+  app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="mark">F</span><span class="brand-text">FastCat<span style="font-weight:400"> Support</span></span></div><div class="nav-label">工作空间</div><nav class="nav">${navigationMarkup()}</nav><div class="sidebar-foot"><div class="row"><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div><div class="small">${E(me.name)}<br>${me.role === "admin" ? "管理员" : "客服"}</div></div><button id="logout" class="quiet small">退出登录</button></div></aside><main><header class="topbar"><strong id="breadcrumb"></strong><div class="right"><button id="global-search-button" class="search-launcher" aria-label="搜索与快速跳转"><span>搜索工作空间</span><kbd>⌘ K</kbd></button><button id="theme-toggle" class="quiet" aria-label="切换主题" title="切换明暗主题">◐</button><select id="own-availability" class="presence-select" aria-label="我的接待状态"><option value="available">可接待</option><option value="away">暂离</option><option value="offline">不接待</option></select><button id="open-widget" class="quiet">↗ 访客端预览</button><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div></div></header><div id="view"></div></main></div>`;
   app
     .querySelectorAll("[data-page]")
     .forEach((b) => (b.onclick = () => navigate(b.dataset.page)));
+  const toggle = document.querySelector("#toggle-agent-menu");
+  if (toggle)
+    toggle.onclick = () => {
+      agentMenuOpen = !agentMenuOpen;
+      updateAgentMenu();
+    };
+  updateAgentMenu();
   document.querySelector("#global-search-button").onclick = () =>
     managementUI.globalSearch();
   document.querySelector("#own-availability").value =
@@ -356,13 +397,20 @@ function navigate(p) {
   if (page === p) render();
 }
 window.onhashchange = () => {
-  page = location.hash.slice(1) || "dashboard";
+  page = location.hash.slice(1) || "inbox";
   if (me) render();
 };
 async function render() {
-  if (!titles[page] || !allowedPage(page)) page = "dashboard";
+  if (!titles[page] || !allowedPage(page)) page = "inbox";
+  if (page === "agent" || agentChildren.includes(page)) agentMenuOpen = true;
+  updateAgentMenu();
   document.querySelectorAll("[data-page]").forEach((b) => {
-    b.classList.toggle("active", b.dataset.page === page);
+    b.classList.toggle(
+      "active",
+      b.dataset.page === page ||
+        (b.dataset.page === "members" && page === "teams") ||
+        (b.dataset.page === "agent" && agentChildren.includes(page)),
+    );
     b.setAttribute("aria-current", b.dataset.page === page ? "page" : "false");
   });
   document
@@ -380,90 +428,6 @@ async function render() {
       return await serviceUI.render(page);
     if (["members", "replies", "tags", "audit", "settings"].includes(page))
       return await managementUI.render(page);
-    if (page === "dashboard") {
-      const [c, a, k] = await Promise.all([
-        api("/conversations"),
-        api("/resources?kind=agent"),
-        api("/resources?kind=knowledge"),
-      ]);
-      if (page !== "dashboard") return;
-      v.innerHTML = `<div class="content"><div class="page-heading"><div><h1>工作空间总览</h1><p>你好，${E(me.name)}。每一段对话，都是更好服务的开始。</p></div><button class="primary" id="go-inbox">进入工作台 ↗</button></div><div class="stats">${[
-        ["会话总数", c.length, "inbox", "全部客户会话"],
-        [
-          "待处理会话",
-          c.filter((x) => x.status === "open").length,
-          "visitors",
-          "等待客服跟进",
-        ],
-        ["智能体", a.length, "agent", "已保存的角色配置"],
-        ["知识条目", k.length, "knowledge", "团队共享知识"],
-      ]
-        .map(
-          ([t, n, i, s]) =>
-            `<div class="stat"><span class="icon">${icons[i]}</span><span class="muted">${t}</span><div class="value">${n}</div><span class="small">${s}</span></div>`,
-        )
-        .join(
-          "",
-        )}</div><div class="queue-overview"><button data-queue="unassigned"><span>待分配</span><strong>${c.filter((x) => !x.assignee && x.status !== "closed").length}</strong><span>进入队列 →</span></button><button data-queue="mine"><span>我负责</span><strong>${c.filter((x) => x.assignee === me.id && x.status !== "closed").length}</strong><span>继续处理 →</span></button><button data-queue="urgent"><span>紧急会话</span><strong>${c.filter((x) => x.priority === "urgent" && x.status !== "closed").length}</strong><span>优先跟进 →</span></button></div><div class="columns"><section class="panel"><div class="panel-head"><h2>最近会话</h2><span class="small">实时更新</span></div>${
-        c.length
-          ? `<table class="table"><thead><tr><th>访客</th><th>主题</th><th>状态</th></tr></thead><tbody>${c
-              .toSorted((a, b) => b.updated.localeCompare(a.updated))
-              .slice(0, 6)
-              .map(
-                (x) =>
-                  `<tr><td>${E(x.name)}</td><td>${E(x.subject)}</td><td><span class="badge">${statusName(x.status)}</span></td></tr>`,
-              )
-              .join("")}</tbody></table>`
-          : empty(
-              "▤",
-              "等待第一位访客",
-              "打开访客端预览，发送消息即可开始真实客服会话。",
-              '<button id="start-preview">打开访客端</button>',
-            )
-      }</section><section class="panel"><div class="panel-head"><h2>快速开始</h2><span class="small">连接你的服务</span></div>${[
-        [
-          me.role === "admin" ? "agent" : "replies",
-          me.role === "admin" ? "创建智能体" : "查看快捷回复",
-          me.role === "admin" ? "配置角色与服务指令" : "快速使用团队常用话术",
-        ],
-        ["knowledge", "整理知识库", "沉淀问题与答案"],
-        [
-          me.role === "admin" ? "members" : "inbox",
-          me.role === "admin" ? "邀请团队成员" : "进入客服工作台",
-          me.role === "admin"
-            ? "添加客服，协作处理会话"
-            : "查看我负责和未分配的会话",
-        ],
-        [
-          me.role === "admin" ? "model" : "visitors",
-          me.role === "admin" ? "配置模型" : "访客管理",
-          me.role === "admin" ? "准备 AI 服务连接" : "查看可访问的访客资料",
-        ],
-      ]
-        .map(
-          ([p, t, d]) =>
-            `<a href="#${p}" class="shortcut"><span class="icon">${icons[p]}</span><div><strong>${t}</strong><p>${d}</p></div><span class="muted" style="margin-left:auto">→</span></a>`,
-        )
-        .join("")}</section></div></div>`;
-      document
-        .querySelectorAll("[data-queue]")
-        .forEach(
-          (button) =>
-            (button.onclick = () =>
-              inboxUI.queue(
-                button.dataset.queue === "urgent"
-                  ? { priority: "urgent" }
-                  : { assignee: button.dataset.queue },
-              )),
-        );
-      document.querySelector("#go-inbox").onclick = () => navigate("inbox");
-      document
-        .querySelector("#start-preview")
-        ?.addEventListener("click", () =>
-          window.open("/widget", "_blank", "noopener"),
-        );
-      return;
-    }
     if (page === "visitors") {
       const rows = await api("/visitors");
       if (page !== "visitors") return;

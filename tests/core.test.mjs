@@ -68,6 +68,10 @@ after(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 test("authentication, conversation lifecycle, visitor isolation and persistence", async () => {
+  assert.equal(
+    (await call("/setup", "GET", undefined, false)).d.required,
+    true,
+  );
   assert.equal((await call("/conversations")).r.status, 401);
   assert.equal(
     (
@@ -85,6 +89,10 @@ test("authentication, conversation lifecycle, visitor isolation and persistence"
     password: "correct-password-123",
   });
   assert.equal(setup.r.status, 200);
+  assert.equal(
+    (await call("/setup", "GET", undefined, false)).d.required,
+    false,
+  );
   cookie = setup.r.headers.get("set-cookie").split(";")[0];
   assert.equal(
     (

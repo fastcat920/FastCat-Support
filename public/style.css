@@ -260,35 +260,11 @@ p {
   color: var(--muted);
   font-size: 13px;
 }
-.stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-  margin: 26px 0;
-}
-.stat,
 .panel,
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-}
-.stat {
-  padding: 22px;
-}
-.stat .value {
-  font-size: 30px;
-  font-weight: 650;
-  margin: 15px 0 9px;
-  letter-spacing: -1px;
-}
-.stat .icon {
-  float: right;
-  background: var(--brand-soft);
-  color: var(--brand);
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
 }
 .panel {
   padding: 25px;
@@ -298,11 +274,6 @@ p {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
-}
-.columns {
-  display: grid;
-  grid-template-columns: 1.7fr 1fr;
-  gap: 22px;
 }
 .empty {
   display: flex;
@@ -354,30 +325,6 @@ p {
     var(--line) 49px,
     transparent 50px
   );
-}
-.shortcut {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 17px 0;
-  border-bottom: 1px solid var(--line);
-  text-decoration: none;
-  color: inherit;
-}
-.shortcut:last-child {
-  border: 0;
-}
-.shortcut .icon {
-  width: 39px;
-  height: 39px;
-  background: var(--brand-soft);
-  color: var(--brand);
-  border-radius: 10px;
-}
-.shortcut p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--muted);
 }
 .toolbar {
   display: flex;
@@ -751,12 +698,6 @@ p {
   .sidebar-foot button {
     padding: 7px;
   }
-  .stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .columns {
-    grid-template-columns: 1fr;
-  }
   .content {
     padding: 24px;
   }
@@ -786,12 +727,6 @@ p {
   }
   .content {
     padding: 18px;
-  }
-  .stats {
-    gap: 10px;
-  }
-  .stat {
-    padding: 15px;
   }
   .topbar {
     padding: 0 18px;
@@ -2404,29 +2339,6 @@ p {
 .chat-actions #chat-status {
   width: 91px;
 }
-.queue-overview {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
-  margin: 0 0 24px;
-}
-.queue-overview > button {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--surface);
-  padding: 17px 20px;
-  font-size: 12px;
-}
-.queue-overview strong {
-  font-size: 20px;
-  color: var(--text);
-}
-.queue-overview span:last-child {
-  margin-left: auto;
-  font-size: 10px;
-  color: var(--muted);
-}
 @media (max-width: 850px) {
   .nav-group-label {
     font-size: 0;
@@ -2437,27 +2349,8 @@ p {
   .nav-group-label:first-child {
     display: none;
   }
-  .queue-overview {
-    gap: 10px;
-  }
-  .queue-overview > button {
-    padding: 13px;
-    gap: 8px;
-  }
-  .queue-overview span:last-child {
-    display: none;
-  }
 }
 @media (max-width: 500px) {
-  .queue-overview {
-    grid-template-columns: 1fr;
-  }
-  .queue-overview span:last-child {
-    display: block;
-  }
-  .queue-overview > button {
-    padding: 12px 15px;
-  }
   .chat-actions #chat-status {
     width: 85px;
   }
@@ -3596,4 +3489,76 @@ label:has(> input:is([type="checkbox"], [type="radio"])) {
   border-bottom: 1px solid var(--line);
   margin-bottom: 8px;
   flex-wrap: wrap;
+}
+
+.nav-parent-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.nav-parent-row > [data-page] {
+  flex: 1;
+  min-width: 0;
+}
+.nav .nav-disclosure {
+  width: 30px;
+  min-width: 30px;
+  padding: 10px 6px;
+  justify-content: center;
+}
+.nav-disclosure[aria-expanded="true"] {
+  transform: rotate(180deg);
+}
+.nav-submenu {
+  margin: 3px 0 8px 22px;
+  padding-left: 9px;
+  border-left: 1px solid var(--line);
+}
+.nav-submenu[hidden] {
+  display: none;
+}
+.nav .nav-submenu button {
+  font-size: 12px;
+  padding: 10px 12px;
+}
+.nav-submenu .icon {
+  width: 17px;
+  height: 17px;
+}
+.team-navigation {
+  margin-bottom: 24px;
+  display: flex;
+  gap: 8px;
+}
+.team-navigation a {
+  padding: 9px 16px;
+  border-radius: 9px;
+  color: var(--muted);
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.team-navigation a.active {
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-color: var(--brand);
+}
+@media (max-width: 850px) {
+  .nav-parent-row {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .nav-parent-row > [data-page] {
+    flex-basis: 100%;
+  }
+  .nav .nav-disclosure {
+    padding: 2px 6px;
+  }
+  .nav-submenu {
+    margin-left: 2px;
+    padding-left: 2px;
+  }
+  .nav .nav-submenu button {
+    padding: 10px 5px;
+  }
 }

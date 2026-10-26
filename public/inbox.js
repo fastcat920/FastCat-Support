@@ -814,23 +814,6 @@ export function createInboxUI({
     if (isActive()) mount();
     else navigate("inbox");
   }
-  function queue(filters) {
-    ensureIdentity();
-    state.active = null;
-    state.filter = {
-      status: "all",
-      assignee: "all",
-      priority: "all",
-      tag: "",
-      unread: false,
-      q: "",
-      ...filters,
-    };
-    state.offset = 0;
-    state.selected.clear();
-    if (isActive()) mount();
-    else navigate("inbox");
-  }
   function paintPending() {
     const el = document.querySelector("#staff-outbox");
     if (!el || !outbox) return;
@@ -887,7 +870,6 @@ export function createInboxUI({
     },
     refresh,
     open,
-    queue,
     close() {
       outbox?.close();
       pending = [];

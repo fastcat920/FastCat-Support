@@ -1,6 +1,4 @@
 const shapes = {
-  dashboard:
-    '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="11" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="18" width="7" height="3" rx="1"/>',
   inbox: '<path d="M4 4h16v16H4zM4 14h5l2 3h2l2-3h5M8 8h8M8 11h5"/>',
   agent:
     '<rect x="4" y="7" width="16" height="13" rx="4"/><path d="M12 3v4M2 12v4M22 12v4M9 16h6"/><circle cx="9" cy="12" r=".6"/><circle cx="15" cy="12" r=".6"/>',

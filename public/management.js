@@ -1,3 +1,4 @@
+import { teamNavigation } from "./team-navigation.js";
 export function createManagementUI({
   api,
   E,
@@ -46,7 +47,7 @@ export function createManagementUI({
         api("/invitations"),
       ]);
       if (revision !== epoch || !isActive(page)) return;
-      v.innerHTML = `<div class="content management-page">${heading("团队成员", "邀请同事加入工作空间，分配客服与管理员权限。", '<button class="primary" id="invite-member">＋ 邀请成员</button>')}<div class="management-stats"><span><strong>${members.filter((m) => m.active).length}</strong> 启用成员</span><span><strong>${members.filter((m) => m.role === "admin" && m.active).length}</strong> 管理员</span><span><strong>${invitations.filter((i) => !i.revoked && !i.accepted && i.expires > Date.now()).length}</strong> 待接受邀请</span></div><section class="panel"><div class="management-tabs"><button data-tab="members" class="${tab === "members" ? "active" : ""}">成员列表</button><button data-tab="invitations" class="${tab === "invitations" ? "active" : ""}">邀请记录</button></div><div class="toolbar"><input id="member-query" aria-label="搜索成员" placeholder="搜索姓名或邮箱…" value="${E(query)}"></div><div id="member-table"></div></section></div>`;
+      v.innerHTML = `<div class="content management-page">${teamNavigation("members")}${heading("团队管理", "邀请同事加入工作空间，分配客服与管理员权限。", '<button class="primary" id="invite-member">＋ 邀请成员</button>')}<div class="management-stats"><span><strong>${members.filter((m) => m.active).length}</strong> 启用成员</span><span><strong>${members.filter((m) => m.role === "admin" && m.active).length}</strong> 管理员</span><span><strong>${invitations.filter((i) => !i.revoked && !i.accepted && i.expires > Date.now()).length}</strong> 待接受邀请</span></div><section class="panel"><div class="management-tabs"><button data-tab="members" class="${tab === "members" ? "active" : ""}">成员列表</button><button data-tab="invitations" class="${tab === "invitations" ? "active" : ""}">邀请记录</button></div><div class="toolbar"><input id="member-query" aria-label="搜索成员" placeholder="搜索姓名或邮箱…" value="${E(query)}"></div><div id="member-table"></div></section></div>`;
       const draw = () => {
         const rows = (tab === "members" ? members : invitations).filter((r) =>
           (r.name || "")
