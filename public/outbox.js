@@ -1,3 +1,4 @@
+import { randomId } from "./ids.js";
 const DB = "fastcat-outbox-v1";
 let connection;
 function database() {
@@ -53,7 +54,7 @@ export function createOutbox({
         32 * 1024 * 1024
     )
       throw Error("待发队列已满，请先处理已有消息");
-    const id = message.id || crypto.randomUUID(),
+    const id = message.id || randomId(),
       record = {
         ...message,
         id,

@@ -1,3 +1,4 @@
+import { randomId } from "./ids.js";
 export function layoutFlow(definition, reset = false) {
   const byId = new Map(definition.nodes.map((n) => [n.id, n])),
     depth = new Map(),
@@ -73,8 +74,7 @@ export function duplicateNode(definition, id) {
   if (!old || old.type === "start") throw Error("开始节点不能复制");
   if (definition.nodes.length >= 50) throw Error("最多 50 个节点");
   const copy = structuredClone(old);
-  copy.id =
-    old.type + "_" + crypto.randomUUID().replaceAll("-", "").slice(0, 10);
+  copy.id = old.type + "_" + randomId().replaceAll("-", "").slice(0, 10);
   copy.name = (old.name || old.type) + " 副本";
   copy.position = {
     x: Math.min(10000, (old.position?.x || 35) + 40),

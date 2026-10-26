@@ -1,3 +1,4 @@
+import { randomId } from "./ids.js";
 import { createExtensionsUI } from "./extensions.js";
 import { createNotifications } from "./notifications.js";
 import { createSettingsUI } from "./settings.js";
@@ -134,6 +135,13 @@ function toast(s) {
   clearTimeout(window.toastTimer);
   window.toastTimer = setTimeout(() => (el.style.display = "none"), 3500);
 }
+window.addEventListener("error", (event) => {
+  if (event.error) toast("操作未完成：" + event.error.message);
+});
+window.addEventListener("unhandledrejection", (event) => {
+  if (event.reason?.name !== "AbortError")
+    toast("操作未完成：" + (event.reason?.message || "请重试"));
+});
 function bindError(fn) {
   return async (e) => {
     try {
@@ -550,7 +558,7 @@ function resourceList(kind) {
 function modal(title, html, submit = "保存", onSubmit) {
   const o = document.createElement("div");
   o.className = "overlay";
-  const titleId = "dialog-" + crypto.randomUUID();
+  const titleId = "dialog-" + randomId();
   const parentDialog = [...document.querySelectorAll(".overlay")].at(-1);
   const appRoot = document.querySelector("#app");
   if (parentDialog) parentDialog.inert = true;

@@ -1,3 +1,4 @@
+import { webcrypto } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { indexedDB } from "fake-indexeddb";
@@ -134,4 +135,30 @@ test("closing an identity while enqueue is in progress cannot leave a new privat
   await assert.rejects(pending, /身份|关闭/);
   assert.equal((await a.list()).length, 0);
   await purgeOutbox("staff:logout-race");
+});
+
+test("HTTP browser without randomUUID can queue and deliver messages", async () => {
+  const prior = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  Object.defineProperty(globalThis, "crypto", {
+    configurable: true,
+    value: { getRandomValues: webcrypto.getRandomValues.bind(webcrypto) },
+  });
+  const sent = [];
+  const box = createOutbox({
+    owner: "http-visitor",
+    send: async (r) => sent.push(r),
+  });
+  try {
+    navigator.onLine = false;
+    const id = await box.enqueue({ body: "HTTP message" });
+    assert.match(id, /^[0-9a-f-]{36}$/);
+    navigator.onLine = true;
+    await box.flush();
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].id, id);
+  } finally {
+    box.close();
+    navigator.onLine = false;
+    Object.defineProperty(globalThis, "crypto", prior);
+  }
 });

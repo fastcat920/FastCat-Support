@@ -1,3 +1,4 @@
+import { randomId } from "./ids.js";
 import { teamNavigation } from "./team-navigation.js";
 export function createServiceUI({
   api,
@@ -238,7 +239,7 @@ export function createServiceUI({
       const r =
         index === undefined
           ? {
-              id: crypto.randomUUID(),
+              id: randomId(),
               name: "",
               enabled: true,
               keywords: [],
