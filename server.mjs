@@ -236,7 +236,6 @@ service = createService({
   db,
   broadcast,
   completion: (options) => agentRunner.stream(options),
-  configured: () => providers.configured(),
   channelPolicy: (id) => channels.policy(id),
   knowledgeLookup: (q, c, l, options) => retrieval.lookup(q, c, l, options),
 });

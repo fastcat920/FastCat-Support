@@ -153,7 +153,7 @@ export function createSettingsUI({
     }
     if (section === "about")
       el.innerHTML =
-        "<h2>FastCat Support</h2><p>版本 0.17.0</p><p>独立客服工作空间</p>";
+        "<h2>FastCat Support</h2><p>版本 0.18.0</p><p>独立客服工作空间</p>";
   }
   return { render };
 }

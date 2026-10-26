@@ -2415,38 +2415,6 @@ p {
 .service-section .field:last-child {
   margin-bottom: 0;
 }
-.routing-rule {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px 0;
-  border-top: 1px solid var(--line);
-}
-.routing-rule > div:first-of-type {
-  flex: 1;
-  min-width: 0;
-}
-.routing-rule strong {
-  font-size: 13px;
-}
-.routing-rule .small {
-  margin-top: 7px;
-}
-.routing-rule button {
-  padding: 6px;
-  font-size: 12px;
-}
-.rule-order {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: var(--brand-soft);
-  color: var(--brand);
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  flex-shrink: 0;
-}
 .weekday-picker {
   display: flex;
   gap: 10px;
@@ -2697,12 +2665,6 @@ p {
   .service-form-grid {
     grid-template-columns: 1fr;
     gap: 0;
-  }
-  .routing-rule {
-    flex-wrap: wrap;
-  }
-  .routing-rule > .row {
-    margin-left: auto;
   }
   .service-section-title {
     align-items: flex-start;

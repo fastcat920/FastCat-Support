@@ -13,7 +13,7 @@ export function createProviderUI({ api, E, modal, toast }) {
       : context.startsWith("synthesis:")
         ? "协调汇总"
         : context.startsWith("automatic:")
-          ? "自动接待"
+          ? "平台 AI 回复"
           : context.startsWith("conversation:")
             ? "会话草稿"
             : {

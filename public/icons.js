@@ -31,5 +31,4 @@ iconMarkup.tags =
 iconMarkup.audit =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" aria-hidden="true"><path d="M4 3h16v18H4ZM8 7h8M8 12h8M8 17h5"/></svg>';
 
-iconMarkup.reception = iconMarkup.agent;
 iconMarkup.teams = iconMarkup.visitors;

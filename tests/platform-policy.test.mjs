@@ -7,11 +7,7 @@ import { migrateFeatures } from "../lib/features.mjs";
 import { migrateManagement, insertStaffMessage } from "../lib/management.mjs";
 import { migrateMedia, insertVisitorMessage } from "../lib/media.mjs";
 import { migrateReceipts } from "../lib/receipts.mjs";
-import {
-  migrateService,
-  createService,
-  defaultService,
-} from "../lib/service.mjs";
+import { migrateService, createService } from "../lib/service.mjs";
 import { migrateChannels, createChannels } from "../lib/channels.mjs";
 function setup() {
   const db = new DatabaseSync(":memory:");
@@ -98,11 +94,6 @@ CREATE TABLE resources(id TEXT PRIMARY KEY,kind TEXT,name TEXT,description TEXT,
     broadcast(c.id);
     return m;
   }
-  function global(value) {
-    db.prepare("UPDATE service_settings SET value=?").run(
-      JSON.stringify({ ...structuredClone(defaultService), ...value }),
-    );
-  }
   return {
     db,
     channels,
@@ -112,7 +103,6 @@ CREATE TABLE resources(id TEXT PRIMARY KEY,kind TEXT,name TEXT,description TEXT,
     channel,
     conversation,
     send,
-    global,
     admin,
     advance(ms) {
       time = new Date(time.getTime() + ms);
@@ -146,31 +136,26 @@ test("independent platform auto/off modes and selected agents override workspace
         .get(b.id).n,
       0,
     );
-    x.global({
-      enabled: true,
-      ai: { ...defaultService.ai, enabled: true, agentId: "agent-b" },
-    });
     const inherited = x.channels
       .list()
       .find((c) => c.is_default && c.type === "web");
     x.send(x.conversation(inherited.id));
     await x.flush();
-    assert.equal(x.calls.at(-1).agentId, "agent-b");
+    assert.equal(x.calls.length, 1);
   } finally {
     x.close();
   }
 });
-test("assist waits until timeout, replies through the selected agent even when automatically assigned, then respects staff intervention", async () => {
+test("assist waits until timeout, replies through selected agent and respects staff intervention", async () => {
   const x = setup();
   try {
-    x.global({ assignment: { mode: "least_busy", teamId: "" } });
     const profile = await x.channel("assist");
     const c = x.conversation(profile.id);
     x.send(c);
     assert.equal(
       x.db.prepare("SELECT assignee FROM conversations WHERE id=?").get(c.id)
         .assignee,
-      "admin",
+      "",
     );
     x.advance(9999);
     x.service.tick();
@@ -346,6 +331,46 @@ test("platform appearance validation rejects executable URLs, unknown AI agents 
         )
         .get(visitor.id).body,
       "站点专属欢迎语",
+    );
+  } finally {
+    x.close();
+  }
+});
+
+test("retired workspace rules cannot reactivate inherited platform reception", async () => {
+  const x = setup();
+  try {
+    x.db.exec(
+      "CREATE TABLE service_settings(id INTEGER PRIMARY KEY,value TEXT,revision INTEGER)",
+    );
+    x.db.prepare("INSERT INTO service_settings VALUES(1,?,0)").run(
+      JSON.stringify({
+        enabled: true,
+        ai: { enabled: true, agentId: "agent-b" },
+        assignment: { mode: "least_busy", teamId: "" },
+        welcomeMessage: "legacy greeting",
+        rules: [{ enabled: true, keywords: ["问题"], mode: "ai" }],
+      }),
+    );
+    const inherited = x.channels
+      .list()
+      .find((c) => c.is_default && c.type === "web");
+    const c = x.conversation(inherited.id);
+    x.send(c);
+    await x.flush();
+    assert.equal(x.calls.length, 0);
+    assert.equal(
+      x.db.prepare("SELECT assignee FROM conversations WHERE id=?").get(c.id)
+        .assignee,
+      "",
+    );
+    assert.equal(
+      x.db
+        .prepare(
+          "SELECT count(*) n FROM messages WHERE conversation_id=? AND role='agent'",
+        )
+        .get(c.id).n,
+      0,
     );
   } finally {
     x.close();

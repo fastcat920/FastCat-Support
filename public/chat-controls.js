@@ -1,8 +1,17 @@
+export function shouldSendMessage(event) {
+  return (
+    event.key === "Enter" &&
+    !event.shiftKey &&
+    !event.isComposing &&
+    event.keyCode !== 229 &&
+    !event.repeat
+  );
+}
 // Shared native composer controls for the website and staff workspace.
 export function bindComposer(form) {
   const input = form.querySelector("textarea");
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing) {
+    if (shouldSendMessage(e)) {
       e.preventDefault();
       if (!input.disabled)
         form.requestSubmit(form.querySelector("[type=submit]"));

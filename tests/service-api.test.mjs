@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseDocument } from "../lib/documents.mjs";
-import { inServiceHours } from "../lib/service.mjs";
+import { inServiceHours } from "../lib/working-hours.mjs";
 const dir = mkdtempSync(join(tmpdir(), "fastcat-service-")),
   base = "http://127.0.0.1:14340";
 let child, cookie, admin, model;
@@ -35,8 +35,12 @@ async function call(path, method = "GET", body, headers = {}) {
   }
   return { status: r.status, data, headers: r.headers };
 }
-async function start() {
-  return (await call("/widget/start", "POST", { name: "测试访客" })).data;
+async function start(appKey = "") {
+  return (
+    await call("/widget/start" + (appKey ? "?appKey=" + appKey : ""), "POST", {
+      name: "测试访客",
+    })
+  ).data;
 }
 async function send(v, text, key = "visitor_message_0001") {
   return call(
@@ -239,81 +243,85 @@ test("knowledge document import indexes content and preserves original bytes", a
     400,
   );
 });
-test("reception defaults off; team routing respects capacity, presence and revision", async () => {
-  let v = await start();
-  assert.equal((await detail(v)).messages.length, 0);
-  let cfg = (await call("/service/settings")).data;
-  assert.equal(cfg.enabled, false);
+test("workspace reception endpoints are removed; working hours retain revision validation and teams remain manageable", async () => {
+  assert.equal((await call("/service/settings")).status, 404);
+  assert.equal((await call("/service/settings", "PUT", {})).status, 404);
+  assert.equal((await call("/service/runs")).status, 404);
+  const old = (await call("/team-hours")).data;
+  assert.equal(old.enabled, false);
+  const next = {
+    ...old,
+    enabled: true,
+    weekdays: [1],
+    start: "22:00",
+    end: "06:00",
+  };
+  assert.equal(
+    (
+      await call("/team-hours", "PUT", {
+        expectedRevision: old.revision,
+        value: next,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await call("/team-hours", "PUT", {
+        expectedRevision: old.revision,
+        value: next,
+      })
+    ).status,
+    409,
+  );
+  const fresh = (await call("/team-hours")).data;
+  assert.equal(
+    (
+      await call("/team-hours", "PUT", {
+        expectedRevision: fresh.revision,
+        value: { ...fresh, timeZone: "bad-zone" },
+      })
+    ).status,
+    400,
+  );
+  await call("/team-hours", "PUT", {
+    expectedRevision: fresh.revision,
+    value: { ...old, enabled: false },
+  });
   const team = await call("/teams", "POST", {
     name: "售后",
     memberIds: [admin.id],
   });
   assert.equal(team.status, 201);
-  cfg.enabled = true;
-  cfg.assignment = { mode: "least_busy", teamId: team.data.id };
-  cfg.welcomeMessage = "欢迎咨询";
-  assert.equal(
-    (
-      await call("/service/settings", "PUT", {
-        value: cfg,
-        expectedRevision: cfg.revision,
-      })
-    ).status,
-    200,
-  );
-  assert.equal(
-    (
-      await call("/service/settings", "PUT", {
-        value: cfg,
-        expectedRevision: cfg.revision,
-      })
-    ).status,
-    409,
-  );
-  v = await start();
-  assert.equal((await detail(v)).messages[0].body, "欢迎咨询");
-  await send(v, "退货");
-  assert.equal((await detail(v)).conversation.assignee, admin.id);
-  await call("/presence", "PATCH", { availability: "away" });
-  v = await start();
-  await send(v, "物流");
-  assert.ok(!(await detail(v)).conversation.assignee);
-  await call("/presence", "PATCH", { availability: "available" });
   assert.equal(
     (
       await call("/service/members/" + admin.id, "PATCH", {
         availability: "available",
-        capacity: 1,
+        capacity: 3,
       })
     ).status,
     200,
   );
-  v = await start();
-  await send(v, "容量检查");
-  assert.ok(!(await detail(v)).conversation.assignee);
-  await call("/service/members/" + admin.id, "PATCH", {
-    availability: "available",
-    capacity: 10,
-  });
-
-  assert.equal((await call("/teams/" + team.data.id, "DELETE")).status, 409);
+  const visitor = await start();
+  await send(visitor, "退货");
+  const thread = await detail(visitor);
+  assert.equal(thread.conversation.assignee, "");
+  assert.equal(thread.messages.filter((m) => m.source === "ai").length, 0);
+  assert.equal((await call("/teams/" + team.data.id, "DELETE")).status, 200);
 });
 
 test("AI publishes a complete answer; manual takeover cancels in-flight output", async () => {
-  let cfg = (await call("/service/settings")).data;
-  cfg.assignment = { mode: "manual", teamId: "" };
-  cfg.ai.enabled = true;
-  cfg.enabled = true;
-  assert.equal(
-    (
-      await call("/service/settings", "PUT", {
-        value: cfg,
-        expectedRevision: cfg.revision,
-      })
-    ).status,
-    200,
-  );
-  let v = await start();
+  const platform = (
+    await call("/access/channels", "POST", {
+      type: "web",
+      name: "AI测试",
+      title: "AI",
+      enabled: true,
+      origins: [],
+      ai_mode: "auto",
+    })
+  ).data;
+  let v = await start(platform.public_key);
   await send(v, "普通问题");
   for (let i = 0; i < 30; i++) {
     if ((await detail(v)).messages.some((m) => m.source === "ai")) break;
@@ -324,7 +332,7 @@ test("AI publishes a complete answer; manual takeover cancels in-flight output",
       (m) => m.source === "ai" && m.body === "模拟答复",
     ),
   );
-  v = await start();
+  v = await start(platform.public_key);
   await send(v, "慢速问题");
   for (let i = 0; i < 30; i++) {
     if ((await detail(v)).automation.typing) break;
@@ -345,10 +353,6 @@ test("AI publishes a complete answer; manual takeover cancels in-flight output",
   assert.equal(d.conversation.assignee, admin.id);
   assert.equal(d.automation.mode, "human");
   assert.ok(!d.messages.some((m) => m.source === "ai"));
-  const runs = (await call("/service/runs")).data;
-  assert.ok(
-    runs.some((r) => r.conversation_id === v.id && r.status === "cancelled"),
-  );
 });
 
 test("provider management, collaboration drafts, workflow model selection and usage are wired through real API routes", async () => {
@@ -423,16 +427,18 @@ test("provider management, collaboration drafts, workflow model selection and us
   });
   assert.equal(r.data.status, "succeeded");
   assert.equal(r.data.output, "模拟答复");
-  const cfg = (await call("/service/settings")).data;
-  cfg.enabled = true;
-  cfg.ai.enabled = true;
-  cfg.ai.agentId = lead;
-  cfg.assignment = { mode: "manual", teamId: "" };
-  await call("/service/settings", "PUT", {
-    value: cfg,
-    expectedRevision: cfg.revision,
-  });
-  const v = await start();
+  const platform = (
+    await call("/access/channels", "POST", {
+      type: "web",
+      name: "协作入口",
+      title: "客服",
+      enabled: true,
+      origins: [],
+      ai_mode: "auto",
+      agent_id: lead,
+    })
+  ).data;
+  const v = await start(platform.public_key);
   await send(v, "政策咨询", "collaboration_auto_01");
   for (let i = 0; i < 50; i++) {
     if ((await detail(v)).messages.some((m) => m.source === "ai")) break;
@@ -464,7 +470,12 @@ test("provider keys, usage and internal collaboration records are restricted to 
     password: "test-password-2026",
   });
   const staffCookie = login.headers.get("set-cookie").split(";")[0];
-  for (const path of ["/ai/providers", "/ai/usage", "/ai/collaborations"])
+  for (const path of [
+    "/ai/providers",
+    "/ai/usage",
+    "/ai/collaborations",
+    "/team-hours",
+  ])
     assert.equal(
       (await call(path, "GET", null, { Cookie: staffCookie })).status,
       403,

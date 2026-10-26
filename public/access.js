@@ -17,7 +17,7 @@ export function createAccessUI({ api, E, modal, toast }) {
   };
   const modeName = (mode) =>
     ({
-      inherit: "继承工作空间",
+      inherit: "人工接待（默认）",
       auto: "AI 自动",
       assist: "人工优先",
       off: "纯人工",
@@ -192,7 +192,7 @@ export function createAccessUI({ api, E, modal, toast }) {
       existing ? c.name + " 配置" : "添加网页 / SDK 平台",
       `<section data-platform-section="basic">${!existing ? '<div class="field"><label>平台类型<select name="type"><option value="web">网页端</option><option value="sdk">Flutter / Dart SDK</option></select></label></div>' : ""}${input("平台名称", "name", c.name)}${input("组件标题", "title", c.title)}<label><input type="checkbox" name="enabled" ${c.enabled ? "checked" : ""}> 启用平台</label><div class="field"><label>允许的网站来源（每行一个完整 origin）<textarea name="origins" rows="2" placeholder="https://www.example.com">${E(c.origins.join("\n"))}</textarea></label><p class="small">网页嵌入与 Flutter Web 需要配置；原生 SDK 无需来源。</p></div></section><section data-platform-section="ai"><h3>AI 接待策略</h3><div class="field"><label>接待模式<select name="ai_mode">${Object.entries(
         {
-          inherit: "继承工作空间（保留现有规则）",
+          inherit: "人工接待（默认）",
           auto: "AI 自动接待",
           assist: "人工优先，超时由 AI 回复",
           off: "纯人工，关闭 AI",
@@ -204,7 +204,7 @@ export function createAccessUI({ api, E, modal, toast }) {
         )
         .join(
           "",
-        )}</select></label></div><div class="field"><label>平台智能体<select name="agent_id"><option value="">工作空间默认模型助手</option>${agents.map((a) => `<option value="${a.id}" ${a.id === c.agent_id ? "selected" : ""}>${E(a.name)}</option>`).join("")}</select></label></div><div data-assist>${input("等待人工回复超时（秒；0 表示不回落 AI）", "fallback_timeout", c.fallback_timeout, "number")}</div><p class="small">人工回复、转交和主动接管会停止 AI；工作时间和坐席分配沿用工作空间设置。修改接待策略会终止该平台正在生成的 AI 回复。</p></section><section data-platform-section="appearance"><h3>组件外观与欢迎语</h3>${input("主题色", "themeColor", w.themeColor, "color")}${input("Logo HTTPS 地址（选填）", "logoUrl", w.logoUrl)}<div class="field"><label>悬浮位置<select name="position">${["bottom-right", "bottom-left", "top-right", "top-left"].map((v, i) => `<option value="${v}" ${v === w.position ? "selected" : ""}>${["右下角", "左下角", "右上角", "左上角"][i]}</option>`).join("")}</select></label></div><div class="field"><label>欢迎语（留空继承工作空间）<textarea name="welcomeMessage" rows="3" maxlength="3000">${E(w.welcomeMessage)}</textarea></label></div><p class="small">颜色、Logo 与位置用于网页组件；Flutter 外观仍由宿主组件配置。</p><div id="widget-design-preview"><header><strong data-preview-title></strong></header><div class="platform-preview-messages"><p data-preview-welcome></p><div class="platform-preview-question">你好，我想咨询一个问题</div><p class="small">客服会在这里回复你</p></div><div class="platform-preview-composer">输入你的问题…</div></div></section><section data-platform-section="integration">${existing ? `<details><summary>嵌入代码与接入标识</summary><pre class="code">${E(code())}</pre><div class="code">${E(c.public_key)}</div><button type="button" id="rotate-platform-key">重新生成接入标识</button>${c.type === "sdk" ? '<p><a href="/fastcat_support_sdk.zip" download>下载 Flutter SDK 与示例</a></p>' : `<p><a href="/embed-demo.html?appKey=${c.public_key}" target="_blank" rel="noopener">打开实际嵌入演示 ↗</a></p>`}</details>` : '<p class="small">保存后即可复制接入代码；新平台默认停用。</p>'}</section>`,
+        )}</select></label></div><div class="field"><label>平台智能体<select name="agent_id"><option value="">工作空间默认模型助手</option>${agents.map((a) => `<option value="${a.id}" ${a.id === c.agent_id ? "selected" : ""}>${E(a.name)}</option>`).join("")}</select></label></div><div data-assist>${input("等待人工回复超时（秒；0 表示不回落 AI）", "fallback_timeout", c.fallback_timeout, "number")}</div><p class="small">人工回复、转交和主动接管会停止 AI；工作时间沿用团队管理设置，会话由客服手动分配。修改接待策略会终止该平台正在生成的 AI 回复。</p></section><section data-platform-section="appearance"><h3>组件外观与欢迎语</h3>${input("主题色", "themeColor", w.themeColor, "color")}${input("Logo HTTPS 地址（选填）", "logoUrl", w.logoUrl)}<div class="field"><label>悬浮位置<select name="position">${["bottom-right", "bottom-left", "top-right", "top-left"].map((v, i) => `<option value="${v}" ${v === w.position ? "selected" : ""}>${["右下角", "左下角", "右上角", "左上角"][i]}</option>`).join("")}</select></label></div><div class="field"><label>欢迎语（留空人工接待（默认））<textarea name="welcomeMessage" rows="3" maxlength="3000">${E(w.welcomeMessage)}</textarea></label></div><p class="small">颜色、Logo 与位置用于网页组件；Flutter 外观仍由宿主组件配置。</p><div id="widget-design-preview"><header><strong data-preview-title></strong></header><div class="platform-preview-messages"><p data-preview-welcome></p><div class="platform-preview-question">你好，我想咨询一个问题</div><p class="small">客服会在这里回复你</p></div><div class="platform-preview-composer">输入你的问题…</div></div></section><section data-platform-section="integration">${existing ? `<details><summary>嵌入代码与接入标识</summary><pre class="code">${E(code())}</pre><div class="code">${E(c.public_key)}</div><button type="button" id="rotate-platform-key">重新生成接入标识</button>${c.type === "sdk" ? '<p><a href="/fastcat_support_sdk.zip" download>下载 Flutter SDK 与示例</a></p>' : `<p><a href="/embed-demo.html?appKey=${c.public_key}" target="_blank" rel="noopener">打开实际嵌入演示 ↗</a></p>`}</details>` : '<p class="small">保存后即可复制接入代码；新平台默认停用。</p>'}</section>`,
       "保存",
       async (f) => {
         const payload = {
@@ -251,7 +251,7 @@ export function createAccessUI({ api, E, modal, toast }) {
       preview.querySelector("[data-preview-title]").textContent =
         form.elements.title.value;
       preview.querySelector("[data-preview-welcome]").textContent =
-        form.elements.welcomeMessage.value || "欢迎语继承工作空间";
+        form.elements.welcomeMessage.value || "欢迎语人工接待（默认）";
     };
     o.querySelector("form").addEventListener("input", update);
     update();

@@ -32,7 +32,6 @@ const titles = {
   visitors: "访客管理",
   replies: "快捷回复",
   agent: "智能体",
-  reception: "自动接待",
   knowledge: "知识库",
   workflow: "工作流",
   tool: "工具集成",
@@ -41,6 +40,7 @@ const titles = {
   extensions: "技能与设备",
   members: "团队管理",
   teams: "团队管理",
+  "team-hours": "工作时间",
   tags: "标签管理",
   audit: "操作记录",
   settings: "设置",
@@ -105,7 +105,6 @@ const serviceUI = createServiceUI({
   modal,
   toast,
   isActive: (kind) => page === kind,
-  openConversation: (id) => inboxUI.open(id),
 });
 const extensionsUI = createExtensionsUI({ api, E, modal, toast });
 const providerUI = createProviderUI({ api, E, modal, toast });
@@ -311,7 +310,11 @@ function navigationMarkup() {
     `<button data-page="${key}" aria-label="${label}"><span class="icon">${icons[key] || icons.tool}</span><span class="nav-text">${label}</span></button>`;
   return Object.keys(titles)
     .filter(
-      (k) => allowedPage(k) && !agentChildren.includes(k) && k !== "teams",
+      (k) =>
+        allowedPage(k) &&
+        !agentChildren.includes(k) &&
+        k !== "teams" &&
+        k !== "team-hours",
     )
     .map((k) => {
       const label =
@@ -416,7 +419,8 @@ async function render() {
     b.classList.toggle(
       "active",
       b.dataset.page === page ||
-        (b.dataset.page === "members" && page === "teams") ||
+        (b.dataset.page === "members" &&
+          ["teams", "team-hours"].includes(page)) ||
         (b.dataset.page === "agent" && agentChildren.includes(page)),
     );
     b.setAttribute("aria-current", b.dataset.page === page ? "page" : "false");
@@ -432,7 +436,7 @@ async function render() {
     if (page === "settings") return await settingsUI.render();
     if (page === "model") return await providerUI.render();
     if (page === "inbox") return await inboxUI.mount();
-    if (["teams", "reception"].includes(page))
+    if (["teams", "team-hours"].includes(page))
       return await serviceUI.render(page);
     if (["members", "replies", "tags", "audit", "settings"].includes(page))
       return await managementUI.render(page);

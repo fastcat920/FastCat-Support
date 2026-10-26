@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createMessageSound } from "../public/chat-controls.js";
+import {
+  createMessageSound,
+  shouldSendMessage,
+} from "../public/chat-controls.js";
 test("visitor message sound waits for interaction and respects mute", async () => {
   const originalDocument = globalThis.document,
     originalWindow = globalThis.window;
@@ -53,4 +56,13 @@ test("visitor message sound waits for interaction and respects mute", async () =
     globalThis.document = originalDocument;
     globalThis.window = originalWindow;
   }
+});
+
+test("Enter sends while Shift+Enter and IME confirmation do not send", () => {
+  assert.equal(shouldSendMessage({ key: "Enter" }), true);
+  assert.equal(shouldSendMessage({ key: "Enter", shiftKey: true }), false);
+  assert.equal(shouldSendMessage({ key: "Enter", isComposing: true }), false);
+  assert.equal(shouldSendMessage({ key: "Enter", keyCode: 229 }), false);
+  assert.equal(shouldSendMessage({ key: "Enter", repeat: true }), false);
+  assert.equal(shouldSendMessage({ key: "a" }), false);
 });

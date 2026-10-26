@@ -236,7 +236,7 @@ export function createManagementUI({
         ? [
             ["members", "团队成员", "邀请、角色与成员状态"],
             ["teams", "接待团队", "团队成员、接待状态和容量"],
-            ["reception", "自动接待", "关键词分流、工作时间与 AI 答复"],
+            ["team-hours", "工作时间", "团队服务时段"],
             ["replies", "快捷回复", "维护团队常用服务话术"],
             ["tags", "标签管理", "管理会话业务分类"],
             ["audit", "操作记录", "查看近期管理操作"],
@@ -330,7 +330,7 @@ export function createManagementUI({
             ["inbox", "会话收件箱"],
             ["members", "团队成员"],
             ["teams", "接待团队"],
-            ["reception", "自动接待"],
+            ["team-hours", "工作时间"],
             ["knowledge", "知识库"],
             ["workflow", "工作流"],
             ["replies", "快捷回复"],
