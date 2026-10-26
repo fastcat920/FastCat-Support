@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>FastCat · 在线客服</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body class="widget-body">
+    <main class="widget-shell">
+      <header>
+        <h2>你好，有什么可以帮你？</h2>
+        <div class="widget-header-meta">
+          <span id="widget-service-status">在线客服</span
+          ><button type="button" id="widget-handoff" hidden>联系人工</button>
+        </div>
+      </header>
+      <div
+        id="widget-content"
+        style="display: flex; flex: 1; flex-direction: column; min-height: 0"
+      ></div>
+    </main>
+    <script src="/vendor/markdown-it.min.js"></script>
+    <script type="module" src="/widget.js"></script>
+  </body>
+</html>

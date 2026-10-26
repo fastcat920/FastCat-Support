@@ -1,0 +1,15 @@
+data/*
+!data/.gitkeep
+.env
+node_modules/
+
+sdk/**/.dart_tool/
+sdk/**/build/
+sdk/**/.flutter-plugins-dependencies
+
+.fastcat-device.json
+
+.DS_Store
+.env.*
+!.env.example
+*.log
