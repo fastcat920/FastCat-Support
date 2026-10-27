@@ -98,6 +98,10 @@ test("visitor API supports SDK origin CORS while staff APIs remain same-origin; 
     headers,
   );
   assert.equal(visitor.status, 201);
+  const listed = (await call("/api/visitors")).data.find(
+    (v) => v.email === "flutter@example.test",
+  );
+  assert.deepEqual(listed.platforms, [sdk.name]);
   const auth = { ...headers, Authorization: "Bearer " + visitor.data.token };
   const sent = await call(
     "/api/widget/messages?appKey=" + sdk.public_key,
@@ -160,6 +164,36 @@ test("visitor API supports SDK origin CORS while staff APIs remain same-origin; 
       )
     ).status,
     403,
+  );
+});
+test("appearance preview remains available when the default web platform is disabled", async () => {
+  const web = (await call("/api/access/channels")).data.find(
+    (c) => c.type === "web",
+  );
+  assert.equal(
+    (
+      await call("/api/access/channels/" + web.id, "PUT", {
+        ...web,
+        enabled: false,
+        expectedRevision: web.revision,
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await call("/widget")).status, 403);
+  assert.equal((await call("/widget?preview=1")).status, 200);
+  const updated = (await call("/api/access/channels")).data.find(
+    (c) => c.id === web.id,
+  );
+  assert.equal(
+    (
+      await call("/api/access/channels/" + web.id, "PUT", {
+        ...updated,
+        enabled: true,
+        expectedRevision: updated.revision,
+      })
+    ).status,
+    200,
   );
 });
 test("Telegram webhook cannot create sessions from private BOT contact or unauthenticated callbacks", async () => {

@@ -248,7 +248,7 @@ function messagePage(id, url, visitor = false) {
 function conversation(id) {
   return db
     .prepare(
-      "SELECT c.*,v.name,v.email,v.notes,v.profile,v.profile_revision FROM conversations c JOIN visitors v ON v.id=c.visitor_id WHERE c.id=?",
+      "SELECT c.*,v.name,v.email,v.profile,v.profile_revision FROM conversations c JOIN visitors v ON v.id=c.visitor_id WHERE c.id=?",
     )
     .get(id);
 }
@@ -283,12 +283,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (p === "/widget") {
-      const channel = channels.resolve(url.searchParams.get("appKey"));
+      const channel =
+        url.searchParams.get("preview") === "1"
+          ? null
+          : channels.resolve(url.searchParams.get("appKey"));
       res.setHeader(
         "Content-Security-Policy",
         "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' blob: https:; frame-ancestors 'self' " +
-          channel.origins.join(" ") +
-          (channel.type === "web" && channel.widget.allowLocalFilePreview
+          (channel?.origins.join(" ") || "") +
+          (channel?.type === "web" && channel.widget.allowLocalFilePreview
             ? " file:"
             : ""),
       );
@@ -935,21 +938,38 @@ const server = http.createServer(async (req, res) => {
         res.end();
         return;
       }
-      if (p === "/api/visitors")
+      if (p === "/api/visitors") {
+        const access =
+          u.role === "admin" ? "" : " AND (c.assignee='' OR c.assignee=?)";
+        const platforms = db.prepare(
+          "SELECT DISTINCT a.name FROM conversations c LEFT JOIN access_channels a ON a.id=c.channel_id WHERE c.visitor_id=?" +
+            access,
+        );
         return send(
           res,
           200,
           db
             .prepare(
-              "SELECT DISTINCT v.id,v.name,v.email,v.notes,v.profile FROM visitors v JOIN conversations c ON c.visitor_id=v.id" +
+              "SELECT DISTINCT v.id,v.name,v.email,v.profile FROM visitors v JOIN conversations c ON c.visitor_id=v.id" +
                 (u.role === "admin"
                   ? ""
                   : " WHERE (c.assignee='' OR c.assignee=?)") +
                 " ORDER BY v.rowid DESC",
             )
             .all(...(u.role === "admin" ? [] : [u.id]))
-            .map((v) => ({ ...v, profile: JSON.parse(v.profile || "{}") })),
+            .map((v) => ({
+              ...v,
+              profile: JSON.parse(v.profile || "{}"),
+              platforms: [
+                ...new Set(
+                  platforms
+                    .all(v.id, ...(u.role === "admin" ? [] : [u.id]))
+                    .map((channel) => channel.name || "未知"),
+                ),
+              ],
+            })),
         );
+      }
       if (p === "/api/knowledge/qa/import" && method === "POST") {
         const b = await body(req);
         if (user(req)?.role !== "admin")

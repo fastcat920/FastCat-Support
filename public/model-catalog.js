@@ -94,7 +94,7 @@ export function createModelCatalogUI({ api, E, modal, toast }) {
       ? allModels.filter((m) => m.provider_id === options.providerId)
       : allModels;
     const refresh = options.onSaved || (() => render(target, options));
-    target.innerHTML = `<div class="toolbar"><span class="small">${models.length} 个已配置模型</span><input type="search" data-catalog-search aria-label="搜索模型" placeholder="搜索模型名称或标识"><button type="button" data-catalog-add>＋ 添加模型</button></div><div class="table-scroll"><table class="table"><thead><tr><th>名称 / 标识</th><th>用途</th><th>状态</th><th>操作</th></tr></thead><tbody>${models.map((m) => `<tr data-model-row="${E(m.id)}"><td>${E(m.name)}<div class="small">${E(m.model)}</div></td><td>${m.model_type === "chat" ? "对话" : "Embedding"}${m.model_type === "embedding" ? `<div class="small">维度：${m.dimensions || "自动"}</div>` : ""}</td><td>${m.enabled && m.provider_enabled ? "可用" : !m.provider_enabled ? "供应商已停用" : "模型已停用"}</td><td><button type="button" data-catalog-test="${m.id}" ${!m.enabled || !m.provider_enabled ? "disabled" : ""}>测试</button><button type="button" data-catalog-edit="${m.id}">配置</button></td></tr>`).join("")}</tbody></table></div><p class="small" data-model-no-results hidden>没有匹配的模型。</p>${models.length ? "" : '<p class="small">尚未添加模型，请添加后再用于智能体或知识库。</p>'}`;
+    target.innerHTML = `<div class="toolbar"><span class="small">${models.length} 个已配置模型</span><input type="search" data-catalog-search aria-label="搜索模型" placeholder="搜索模型名称或标识"><button type="button" data-catalog-add>＋ 添加模型</button></div><div class="table-scroll"><table class="table"><thead><tr><th>名称 / 标识</th><th>用途</th><th>状态</th><th>操作</th></tr></thead><tbody>${models.map((m) => `<tr data-model-row="${E(m.id)}"><td>${E(m.name)}<div class="small">${E(m.model)}</div></td><td>${m.model_type === "chat" ? "对话" : "Embedding"}${m.model_type === "embedding" ? `<div class="small">维度：${m.dimensions || "自动"}</div>` : ""}</td><td>${m.enabled && m.provider_enabled ? "可用" : !m.provider_enabled ? "供应商已停用" : "模型已停用"}</td><td><button type="button" data-catalog-test="${m.id}" ${!m.enabled || !m.provider_enabled ? "disabled" : ""}>测试</button><button type="button" data-catalog-edit="${m.id}">配置</button><button type="button" class="quiet danger" data-catalog-delete="${m.id}">删除</button></td></tr>`).join("")}</tbody></table></div><p class="small" data-model-no-results hidden>没有匹配的模型。</p>${models.length ? "" : '<p class="small">尚未添加模型，请添加后再用于智能体或知识库。</p>'}`;
     const search = target.querySelector("[data-catalog-search]");
     const searchKey = options.providerId || "all";
     search.value = searchByProvider.get(searchKey) || "";
@@ -132,6 +132,24 @@ export function createModelCatalogUI({ api, E, modal, toast }) {
           }
         })),
     );
+    target.querySelectorAll("[data-catalog-delete]").forEach((button) => {
+      button.onclick = () => {
+        const model = models.find((m) => m.id === button.dataset.catalogDelete);
+        modal(
+          "删除模型",
+          `<p>确定删除模型 ${E(model.name)}？历史调用记录会保留。</p>`,
+          "删除",
+          async () => {
+            await api("/ai/models/" + model.id, {
+              method: "DELETE",
+              body: JSON.stringify({ expectedRevision: model.revision }),
+            });
+            toast("模型已删除");
+            await refresh();
+          },
+        );
+      };
+    });
     target
       .querySelectorAll("[data-catalog-edit]")
       .forEach(

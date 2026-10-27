@@ -71,7 +71,7 @@ export function createProviderUI({ api, E, modal, toast }) {
         defaults: d,
         models,
       });
-      target.innerHTML = `<div class="provider-services">${rows.map((r) => `<article class="panel provider-service"><header class="panel-head"><div><h2>${E(r.name)}</h2><p class="small">${E(r.endpoint)}</p></div><div class="row"><span class="badge neutral">${r.protocol === "anthropic" ? "Anthropic Messages" : "Chat Completions"}</span><span class="badge neutral">${models.filter((m) => m.provider_id === r.id && m.model_type === "chat").length} 对话 / ${models.filter((m) => m.provider_id === r.id && m.model_type === "embedding").length} Embedding</span><span class="badge ${r.enabled && r.keyConfigured ? "success" : "neutral"}">${!r.enabled ? "已停用" : r.keyConfigured ? "密钥已配置" : "待配置密钥"}</span><button type="button" data-edit-provider="${r.id}">连接配置</button></div></header><div data-provider-models="${r.id}"></div></article>`).join("")}</div>${rows.length ? "" : '<section class="panel empty"><strong>添加第一个模型服务</strong><p>配置连接并选择模型，一次保存后即可用于智能体和知识库。</p><button type="button" id="empty-add-provider" class="primary">添加模型服务</button></section>'}`;
+      target.innerHTML = `<div class="provider-services">${rows.map((r) => `<article class="panel provider-service"><header class="panel-head"><div><h2>${E(r.name)}</h2><p class="small">${E(r.endpoint)}</p></div><div class="row"><span class="badge neutral">${r.protocol === "anthropic" ? "Anthropic Messages" : "Chat Completions"}</span><span class="badge neutral">${models.filter((m) => m.provider_id === r.id && m.model_type === "chat").length} 对话 / ${models.filter((m) => m.provider_id === r.id && m.model_type === "embedding").length} Embedding</span><span class="badge ${r.enabled && r.keyConfigured ? "success" : "neutral"}">${!r.enabled ? "已停用" : r.keyConfigured ? "密钥已配置" : "待配置密钥"}</span><button type="button" data-edit-provider="${r.id}">连接配置</button><button type="button" class="quiet danger" data-delete-provider="${r.id}">删除</button></div></header><div data-provider-models="${r.id}"></div></article>`).join("")}</div>${rows.length ? "" : '<section class="panel empty"><strong>添加第一个模型服务</strong><p>配置连接并选择模型，一次保存后即可用于智能体和知识库。</p><button type="button" id="empty-add-provider" class="primary">添加模型服务</button></section>'}`;
       target
         .querySelector("#empty-add-provider")
         ?.addEventListener("click", safe(create));
@@ -82,6 +82,26 @@ export function createProviderUI({ api, E, modal, toast }) {
             (b.onclick = () =>
               edit(rows.find((r) => r.id === b.dataset.editProvider))),
         );
+      target.querySelectorAll("[data-delete-provider]").forEach((button) => {
+        button.onclick = () => {
+          const provider = rows.find(
+            (r) => r.id === button.dataset.deleteProvider,
+          );
+          modal(
+            "删除模型服务",
+            `<p>确定删除 ${E(provider.name)} 及其下所有模型？历史调用记录会保留。</p>`,
+            "删除",
+            async () => {
+              await api("/ai/providers/" + provider.id, {
+                method: "DELETE",
+                body: JSON.stringify({ expectedRevision: provider.revision }),
+              });
+              toast("模型服务已删除");
+              await render();
+            },
+          );
+        };
+      });
       for (const el of target.querySelectorAll("[data-provider-models]"))
         await modelCatalogUI.render(el, {
           providerId: el.dataset.providerModels,

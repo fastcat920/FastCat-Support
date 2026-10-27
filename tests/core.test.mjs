@@ -161,13 +161,23 @@ test("authentication, conversation lifecycle, visitor isolation and persistence"
   assert.equal(
     (
       await call("/conversations/" + id, "PATCH", {
-        notes: "高优先级客户",
         assignee: setup.d.id,
         status: "pending",
       })
     ).r.status,
     200,
   );
+  assert.equal(
+    (await call("/conversations/" + id, "PATCH", { notes: "不应保存" })).r
+      .status,
+    400,
+  );
+  const visitors = await call("/visitors");
+  assert.deepEqual(
+    visitors.d.find((v) => v.email === "visitor@example.com").platforms,
+    ["网页端"],
+  );
+  assert.ok(!Object.hasOwn(visitors.d[0], "notes"));
   let widget = await call(
     "/widget?id=" + id,
     "GET",

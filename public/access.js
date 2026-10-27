@@ -34,6 +34,14 @@ export function createAccessUI({ api, E, modal, toast }) {
     selectedConfigTab = "basic",
     telegramCheck = null,
     renderRevision = 0;
+  let previewUpdate = null;
+  window.addEventListener("message", (event) => {
+    if (
+      event.origin === location.origin &&
+      event.data?.type === "fastcat:preview-ready"
+    )
+      previewUpdate?.(event.source);
+  });
   const setPlatformRoute = (id) => {
     const hash = id ? "#channel/" + encodeURIComponent(id) : "#channel";
     if (location.hash !== hash) history.pushState(null, "", hash);
@@ -112,6 +120,7 @@ export function createAccessUI({ api, E, modal, toast }) {
     return target;
   }
   async function render() {
+    previewUpdate = null;
     const revision = ++renderRevision;
     const route = location.hash.match(/^#channel\/([^/]+)$/);
     if (route) {
@@ -498,7 +507,11 @@ export function createAccessUI({ api, E, modal, toast }) {
           "top-left": "左上角",
         }[form.elements.position.value] || "右下角");
     };
-    o.querySelector("#widget-design-preview").addEventListener("load", update);
+    const preview = o.querySelector("#widget-design-preview");
+    previewUpdate = (source) => {
+      if (o.isConnected && source === preview.contentWindow) update();
+    };
+    preview.addEventListener("load", update);
     o.querySelector("form").addEventListener("input", update);
     update();
     const rotate = o.querySelector("#rotate-platform-key");

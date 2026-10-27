@@ -43,12 +43,10 @@ export function createInboxUI({
     detail: null,
     threadKey: "",
     headerKey: "",
-    notesDirty: false,
     revision: 0,
     mounted: false,
     userId: null,
   };
-  const noteDrafts = new Map();
   const internal = new Map(),
     requestIds = new Map(),
     sending = new Set();
@@ -157,7 +155,6 @@ export function createInboxUI({
         q: "",
       };
       state.offset = 0;
-      noteDrafts.clear();
       internal.clear();
       requestIds.clear();
       sending.clear();
@@ -421,7 +418,6 @@ export function createInboxUI({
     state.detail = null;
     state.threadKey = "";
     state.headerKey = "";
-    state.notesDirty = false;
     document.querySelector(".inbox").classList.add("has-chat");
     await refresh();
   }
@@ -473,7 +469,6 @@ export function createInboxUI({
     state.active = nextConversation(state.items, completedId, excluded);
     state.detail = null;
     state.headerKey = state.threadKey = "";
-    state.notesDirty = false;
     if (!state.active) showEmpty();
     await refresh();
     if (!isActive()) return;
@@ -541,7 +536,7 @@ export function createInboxUI({
     const c = data.conversation;
     if (initial) {
       document.querySelector("#chat").innerHTML =
-        `<div class="chat-head" id="chat-head"></div><p id="chat-list-context" class="chat-list-context small" hidden>当前会话不在左侧筛选结果或当前页中。</p><div class="messages" id="messages"></div><div id="staff-outbox"></div><div id="automation-banner" class="automation-banner" hidden></div><form class="composer" id="reply-form"><input id="staff-file" type="file" hidden><textarea id="reply" name="body" placeholder="输入回复内容…" aria-label="回复消息" required maxlength="10000"></textarea><div class="composer-footer"><div class="row composer-actions"><label class="composer-mode"><input name="internal" type="checkbox" ${internal.get(id) ? "checked" : ""} aria-label="内部备注"><span class="mode-public">公开回复</span><span class="mode-note">内部备注</span></label><button type="button" class="quiet small" id="upload-attachment" aria-label="上传并发送附件">⌁ 附件</button><button type="button" class="quiet small" id="quick-replies">快捷回复</button><button type="button" class="quiet small" id="ai-draft">✧ AI 草稿</button></div><span class="small send-hint">Enter 发送 · Shift+Enter 换行</span><button class="primary" id="send-reply" type="submit">发送 ↗</button></div></form>`;
+        `<div class="chat-head" id="chat-head"></div><p id="chat-list-context" class="chat-list-context small" hidden>当前会话不在左侧筛选结果或当前页中。</p><div class="messages" id="messages"></div><div id="staff-outbox"></div><div id="automation-banner" class="automation-banner" hidden></div><form class="composer" id="reply-form"><input id="staff-file" type="file" hidden><textarea id="reply" name="body" placeholder="输入回复内容…" aria-label="回复消息" required maxlength="10000"></textarea><div class="composer-footer"><div class="row composer-actions"><label class="composer-mode"><input name="internal" type="checkbox" ${internal.get(id) ? "checked" : ""} aria-label="内部备注"><span class="mode-public">公开回复</span><span class="mode-note">内部备注</span></label><button type="button" class="quiet small" id="upload-attachment" aria-label="上传并发送附件">⌁ 附件</button><button type="button" class="quiet small" id="quick-replies">快捷回复</button><button type="button" class="quiet small" id="ai-draft">✧ AI 草稿</button></div><button class="primary" id="send-reply" type="submit">发送 ↗</button></div></form>`;
       document.querySelector("#upload-attachment").onclick = () =>
         document.querySelector("#staff-file").click();
       document.querySelector("#staff-file").onchange = safe(async (event) => {
@@ -706,8 +701,6 @@ export function createInboxUI({
       statusNames[c.status];
     document.querySelector("#visitor-assignee").textContent =
       c.assigneeName || "未分配";
-    if (!state.notesDirty)
-      document.querySelector("#visitor-notes").value = c.notes || "";
   }
   function profileDetails(profile = {}) {
     const labels = {
@@ -742,7 +735,6 @@ export function createInboxUI({
     return `${rows ? `<section class="visitor-info-section"><h3>用户资料</h3><dl>${rows}</dl></section>` : ""}${custom ? `<section class="visitor-info-section"><h3>自定义信息</h3><dl>${custom}</dl></section>` : ""}`;
   }
   function drawVisitor(c) {
-    state.notesDirty = noteDrafts.has(c.id);
     const profile = c.profile || {};
     let panelWidth = 320;
     try {
@@ -757,9 +749,7 @@ export function createInboxUI({
         priorityNames,
       )
         .map(([k, v]) => `<option value="${k}">${v}</option>`)
-        .join(
-          "",
-        )}</select></div><label for="visitor-notes" class="small">客户备注</label><textarea id="visitor-notes" placeholder="记录需要交接的信息…"></textarea><button id="save-notes">保存备注</button></section>`;
+        .join("")}</select></div></section>`;
     document.querySelector("#visitor-panel-width").oninput = (event) => {
       const width = event.target.value;
       document
@@ -781,19 +771,6 @@ export function createInboxUI({
     editProfileButton.textContent = "编辑用户资料";
     editProfileButton.onclick = () => editVisitorProfile(c);
     document.querySelector("#visitor-panel").append(editProfileButton);
-    document.querySelector("#visitor-notes").value =
-      noteDrafts.get(c.id) ?? c.notes ?? "";
-    document.querySelector("#visitor-notes").oninput = (e) => {
-      state.notesDirty = true;
-      noteDrafts.set(c.id, e.target.value);
-    };
-    document.querySelector("#save-notes").onclick = safe(async () => {
-      const notes = document.querySelector("#visitor-notes").value;
-      await change({ notes });
-      state.notesDirty = false;
-      noteDrafts.delete(c.id);
-      toast("备注已保存");
-    });
   }
   function editVisitorProfile(c, onSaved = () => {}) {
     const profile = c.profile || {};
@@ -859,14 +836,10 @@ export function createInboxUI({
           ([k, v]) =>
             `<option value="${k}" ${c.status === k ? "selected" : ""}>${v}</option>`,
         )
-        .join(
-          "",
-        )}</select></div><div class="field"><label for="dialog-notes">客户备注</label><textarea id="dialog-notes" name="notes">${E(noteDrafts.get(c.id) ?? c.notes ?? "")}</textarea></div>`,
+        .join("")}</select></div>`,
       "保存",
       async (b) => {
         await change(b, c.revision, c.id);
-        state.notesDirty = false;
-        noteDrafts.delete(c.id);
       },
     );
     o.querySelector("#dialog-history").onclick = safe(() =>

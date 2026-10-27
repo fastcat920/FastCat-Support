@@ -1,4 +1,4 @@
-const CACHE = "fastcat-shell-v025-widget-preview";
+const CACHE = "fastcat-shell-v025-model-delete";
 const FILES = [
   "/",
   "/widget",

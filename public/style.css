@@ -2258,14 +2258,6 @@ p {
 .inbox-v3 .visitor-panel dd {
   font-size: 11px;
 }
-.inbox-v3 #save-notes {
-  margin-top: 9px;
-  width: 100%;
-  font-size: 11px;
-}
-.inbox-v3 #visitor-notes {
-  min-height: 100px;
-}
 .inbox-v3 .message .small {
   font-size: 10px;
 }
@@ -3035,6 +3027,15 @@ p {
   gap: 7px;
   margin-top: 16px;
   flex-wrap: wrap;
+}
+.agent-card-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.agent-card-actions button {
+  padding: 8px 6px;
+  white-space: nowrap;
+  font-size: 12px;
 }
 .agent-editor-section {
   border: 1px solid var(--line);

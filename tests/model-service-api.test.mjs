@@ -227,3 +227,71 @@ test("staff cannot preview credentials, create services or test provider models"
   ])
     assert.equal((await call(path, "POST", data, staffCookie)).status, 403);
 });
+test("model and provider deletion respects references and preserves usage history", async () => {
+  const defaults = (await call("/ai/defaults")).data;
+  const blocked = (await call("/ai/models")).data.find(
+    (m) => m.id === defaults.chat_id,
+  );
+  assert.equal(
+    (
+      await call("/ai/models/" + blocked.id, "DELETE", {
+        expectedRevision: blocked.revision,
+      })
+    ).status,
+    409,
+  );
+  const result = await call("/ai/services", "POST", {
+    provider: { ...provider(), name: "待删除服务" },
+    models: [
+      { model: "disposable-chat", model_type: "chat" },
+      { model: "disposable-embed", model_type: "embedding" },
+    ],
+  });
+  assert.equal(result.status, 201);
+  const service = result.data.provider;
+  const chat = result.data.models.find((m) => m.model_type === "chat");
+  assert.equal(
+    (
+      await call(
+        "/ai/models/" + chat.id,
+        "DELETE",
+        { expectedRevision: chat.revision },
+        staffCookie,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await call("/ai/models/" + chat.id, "DELETE", {
+        expectedRevision: chat.revision + 1,
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await call("/ai/models/" + chat.id, "DELETE", {
+        expectedRevision: chat.revision,
+      })
+    ).status,
+    200,
+  );
+  assert.ok(!(await call("/ai/models")).data.some((m) => m.id === chat.id));
+  const updated = (await call("/ai/providers")).data.find(
+    (p) => p.id === service.id,
+  );
+  assert.equal(updated.model, "");
+  assert.equal(
+    (
+      await call("/ai/providers/" + updated.id, "DELETE", {
+        expectedRevision: updated.revision,
+      })
+    ).status,
+    200,
+  );
+  assert.ok(
+    !(await call("/ai/models")).data.some((m) => m.provider_id === service.id),
+  );
+  assert.ok((await call("/ai/usage")).data.items.length > 0);
+});

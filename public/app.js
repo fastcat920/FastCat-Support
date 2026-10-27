@@ -445,15 +445,20 @@ async function render() {
     if (page === "visitors") {
       const rows = await api("/visitors");
       if (page !== "visitors") return;
-      v.innerHTML = `<div class="content management-page">${heading("访客管理", "搜索客户资料，快速回到相关服务会话。")}<section class="panel"><div class="toolbar"><input id="visitor-query" aria-label="搜索访客" placeholder="搜索姓名、邮箱或备注…"><span class="small">${rows.length} 位可见访客</span></div><div id="visitor-table"></div></section></div>`;
+      v.innerHTML = `<div class="content management-page">${heading("访客管理", "搜索客户资料，快速回到相关服务会话。")}<section class="panel"><div class="toolbar"><input id="visitor-query" aria-label="搜索访客" placeholder="搜索姓名、邮箱或平台…"><span class="small">${rows.length} 位可见访客</span></div><div id="visitor-table"></div></section></div>`;
       const draw = (q) => {
         const filtered = rows.filter((r) =>
-          (r.name + r.email + r.notes + JSON.stringify(r.profile || {}))
+          (
+            r.name +
+            r.email +
+            r.platforms.join(" ") +
+            JSON.stringify(r.profile || {})
+          )
             .toLowerCase()
             .includes(q.toLowerCase()),
         );
         document.querySelector("#visitor-table").innerHTML = filtered.length
-          ? `<div class="table-scroll"><table class="table"><thead><tr><th>姓名</th><th>邮箱</th><th>公司 / 平台</th><th>备注</th><th>操作</th></tr></thead><tbody>${filtered.map((r) => `<tr><td><strong>${E(r.name)}</strong></td><td>${E(r.email || "未提供")}</td><td>${E([r.profile?.company, r.profile?.platform].filter(Boolean).join(" · ") || "—")}</td><td>${E(r.notes || "—")}</td><td><button class="quiet" data-visitor-history="${r.id}">会话记录 →</button></td></tr>`).join("")}</tbody></table></div>`
+          ? `<div class="table-scroll"><table class="table"><thead><tr><th>姓名</th><th>邮箱</th><th>平台</th><th>操作</th></tr></thead><tbody>${filtered.map((r) => `<tr><td><strong>${E(r.name)}</strong></td><td>${E(r.email || "未提供")}</td><td>${E(r.platforms.join("、") || "未知")}</td><td><button class="quiet" data-visitor-history="${r.id}">会话记录 →</button></td></tr>`).join("")}</tbody></table></div>`
           : empty("♧", "暂无匹配访客", "试试其他关键词，或等待新的客户咨询。");
         document.querySelectorAll("[data-visitor-history]").forEach(
           (button) =>
@@ -568,7 +573,7 @@ function resourceList(kind) {
     return tags.map((tag) => `<span>${E(tag)}</span>`).join("");
   };
   document.querySelector("#resource-list").innerHTML = rows.length
-    ? `<div class="grid resource-grid">${rows.map((r) => `<article class="card resource-card"><div class="row resource-card-head"><div class="avatar">${icons[kind]}</div><span class="badge">${kind === "knowledge" ? "知识条目" : kind === "agent" ? "智能体" : kind === "model" ? "模型" : "已保存"}</span><button class="quiet danger" data-delete="${r.id}" style="margin-left:auto" aria-label="删除 ${E(r.name)}">×</button></div><h3>${E(r.name)}</h3><p>${E(r.description.slice(0, 150) || "暂无描述")}</p>${kind === "agent" ? `<div class="agent-card-summary"><span>${E(r.config?.profession || "AI 助手")}</span><span>${E(r.config?.model || "工作空间默认模型")}</span><span>工具 ${(r.config?.toolBindings || []).length} · 工作流 ${(r.config?.workflowIds || []).length}</span>${resourceTags(r.config)}</div>` : ""}<div class="small resource-card-meta">${new Date(r.created).toLocaleDateString("zh-CN")} 创建${kind === "agent" && r.config?.collaboration?.enabled ? " · 已启用协作" : ""}</div><div class="row resource-card-actions"><button data-view="${r.id}">查看详情</button><button data-edit="${r.id}">编辑</button>${kind === "agent" ? `<button data-copy-agent="${r.id}">复制</button><button data-debug="${r.id}" class="primary">调试</button>` : ""}</div></article>`).join("")}</div>`
+    ? `<div class="grid resource-grid">${rows.map((r) => `<article class="card resource-card"><div class="row resource-card-head"><div class="avatar">${icons[kind]}</div><span class="badge">${kind === "knowledge" ? "知识条目" : kind === "agent" ? "智能体" : kind === "model" ? "模型" : "已保存"}</span>${kind !== "agent" ? `<button class="quiet danger" data-delete="${r.id}" style="margin-left:auto" aria-label="删除 ${E(r.name)}">×</button>` : ""}</div><h3>${E(r.name)}</h3><p>${E(r.description.slice(0, 150) || "暂无描述")}</p>${kind === "agent" ? `<div class="agent-card-summary"><span>${E(r.config?.profession || "AI 助手")}</span><span>${E(r.config?.model || "工作空间默认模型")}</span><span>工具 ${(r.config?.toolBindings || []).length} · 工作流 ${(r.config?.workflowIds || []).length}</span>${resourceTags(r.config)}</div>` : ""}<div class="small resource-card-meta">${new Date(r.created).toLocaleDateString("zh-CN")} 创建${kind === "agent" && r.config?.collaboration?.enabled ? " · 已启用协作" : ""}</div><div class="row resource-card-actions ${kind === "agent" ? "agent-card-actions" : ""}"><button data-view="${r.id}">查看详情</button><button data-edit="${r.id}">编辑</button>${kind === "agent" ? `<button data-copy-agent="${r.id}">复制</button><button data-debug="${r.id}" class="primary">调试</button><button class="quiet danger" data-delete="${r.id}" aria-label="删除 ${E(r.name)}">删除</button>` : ""}</div></article>`).join("")}</div>`
     : empty(
         icons[kind],
         query ? "没有匹配结果" : `还没有${titles[kind]}`,
