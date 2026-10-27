@@ -1,3 +1,4 @@
+import { withMessageDays } from "./message-days.js";
 import { receiptMarkup } from "./message-status.js";
 import { nextConversation } from "./inbox-selection.js";
 import { bindComposer } from "./chat-controls.js";
@@ -30,6 +31,7 @@ export function createInboxUI({
       status: "open",
       assignee: "all",
       unread: false,
+      handoffPending: false,
       q: "",
     },
     offset: 0,
@@ -74,7 +76,8 @@ export function createInboxUI({
     const f = state.filter,
       p = new URLSearchParams();
     for (const [key, v] of Object.entries(f))
-      if (v && v !== "all") p.set(key, key === "unread" ? "1" : v);
+      if (v && v !== "all")
+        p.set(key, ["unread", "handoffPending"].includes(key) ? "1" : v);
     if (paged) {
       p.set("paged", "1");
       p.set("limit", "40");
@@ -150,6 +153,7 @@ export function createInboxUI({
         assignee: "all",
         priority: "all",
         unread: false,
+        handoffPending: false,
         q: "",
       };
       state.offset = 0;
@@ -162,7 +166,7 @@ export function createInboxUI({
       state.selected.clear();
       try {
         const f = JSON.parse(localStorage.getItem("fc_inbox_" + me.id) || "{}");
-        for (const key of ["status", "assignee", "unread"])
+        for (const key of ["status", "assignee", "unread", "handoffPending"])
           if (Object.hasOwn(f, key)) state.filter[key] = f[key];
       } catch {}
     }
@@ -201,7 +205,7 @@ export function createInboxUI({
         )
         .join(
           "",
-        )}</select></div></div><div class="row"><label class="small row"><input class="switch" type="checkbox" id="unread-filter" ${state.filter.unread ? "checked" : ""}>仅未读</label><button class="quiet small" id="reset-filters">重置筛选</button></div></details></div><div class="selection-toolbar"><label class="small row"><input type="checkbox" class="switch" id="select-page" aria-label="全选当前页">当前页</label><span class="small" id="selected-count">未选择</span><button id="bulk-manage" class="quiet small" disabled>批量处理</button></div><div id="conversations"></div><div class="queue-pagination"><button id="prev-page" aria-label="上一页">←</button><span id="page-info" class="small"></span><button id="next-page" aria-label="下一页">→</button></div></section><section class="chat" id="chat"></section><aside class="visitor-panel" id="visitor-panel"></aside></div>`;
+        )}</select></div></div><div class="row"><label class="small row"><input class="switch" type="checkbox" id="unread-filter" ${state.filter.unread ? "checked" : ""}>仅未读</label><label class="small row"><input class="switch" type="checkbox" id="handoff-filter" ${state.filter.handoffPending ? "checked" : ""}>等待人工分配</label><button class="quiet small" id="reset-filters">重置筛选</button></div></details></div><div class="selection-toolbar"><label class="small row"><input type="checkbox" class="switch" id="select-page" aria-label="全选当前页">当前页</label><span class="small" id="selected-count">未选择</span><button id="bulk-manage" class="quiet small" disabled>批量处理</button></div><div id="conversations"></div><div class="queue-pagination"><button id="prev-page" aria-label="上一页">←</button><span id="page-info" class="small"></span><button id="next-page" aria-label="下一页">→</button></div></section><section class="chat" id="chat"></section><aside class="visitor-panel" id="visitor-panel"></aside></div>`;
     document.querySelector("#owner-filter").value = state.filter.assignee;
     for (const id of [
       "priority-filter",
@@ -225,6 +229,8 @@ export function createInboxUI({
         setFilter(key, e.target.value);
     document.querySelector("#unread-filter").onchange = (e) =>
       setFilter("unread", e.target.checked);
+    document.querySelector("#handoff-filter").onchange = (e) =>
+      setFilter("handoffPending", e.target.checked);
     document.querySelector("#conversation-search").oninput = (e) => {
       state.filter.q = e.target.value;
       clearTimeout(queryTimer);
@@ -239,6 +245,7 @@ export function createInboxUI({
         status: "open",
         assignee: "all",
         unread: false,
+        handoffPending: false,
         q: "",
       };
       state.offset = 0;
@@ -361,7 +368,8 @@ export function createInboxUI({
         (s) => (s.textContent = state.counts[s.dataset.statusCount] || 0),
       );
     document.querySelector("#active-filter-count").textContent =
-      [state.filter.unread].filter(Boolean).length || "";
+      [state.filter.unread, state.filter.handoffPending].filter(Boolean)
+        .length || "";
     document.querySelector("#conversations").innerHTML = state.items.length
       ? state.items
           .map(
@@ -533,7 +541,7 @@ export function createInboxUI({
     const c = data.conversation;
     if (initial) {
       document.querySelector("#chat").innerHTML =
-        `<div class="chat-head" id="chat-head"></div><div class="messages" id="messages"></div><div id="staff-outbox"></div><div id="automation-banner" class="automation-banner" hidden></div><form class="composer" id="reply-form"><input id="staff-file" type="file" hidden><textarea id="reply" name="body" placeholder="输入回复内容…" aria-label="回复消息" required maxlength="10000"></textarea><div class="composer-footer"><div class="row composer-actions"><label class="composer-mode"><input name="internal" type="checkbox" ${internal.get(id) ? "checked" : ""} aria-label="内部备注"><span class="mode-public">公开回复</span><span class="mode-note">内部备注</span></label><button type="button" class="quiet small" id="upload-attachment" aria-label="上传并发送附件">⌁ 附件</button><button type="button" class="quiet small" id="quick-replies">快捷回复</button><button type="button" class="quiet small" id="ai-draft">✧ AI 草稿</button></div><span class="small send-hint">Enter 发送 · Shift+Enter 换行</span><button class="primary" id="send-reply" type="submit">发送 ↗</button></div></form>`;
+        `<div class="chat-head" id="chat-head"></div><p id="chat-list-context" class="chat-list-context small" hidden>当前会话不在左侧筛选结果或当前页中。</p><div class="messages" id="messages"></div><div id="staff-outbox"></div><div id="automation-banner" class="automation-banner" hidden></div><form class="composer" id="reply-form"><input id="staff-file" type="file" hidden><textarea id="reply" name="body" placeholder="输入回复内容…" aria-label="回复消息" required maxlength="10000"></textarea><div class="composer-footer"><div class="row composer-actions"><label class="composer-mode"><input name="internal" type="checkbox" ${internal.get(id) ? "checked" : ""} aria-label="内部备注"><span class="mode-public">公开回复</span><span class="mode-note">内部备注</span></label><button type="button" class="quiet small" id="upload-attachment" aria-label="上传并发送附件">⌁ 附件</button><button type="button" class="quiet small" id="quick-replies">快捷回复</button><button type="button" class="quiet small" id="ai-draft">✧ AI 草稿</button></div><span class="small send-hint">Enter 发送 · Shift+Enter 换行</span><button class="primary" id="send-reply" type="submit">发送 ↗</button></div></form>`;
       document.querySelector("#upload-attachment").onclick = () =>
         document.querySelector("#staff-file").click();
       document.querySelector("#staff-file").onchange = safe(async (event) => {
@@ -607,7 +615,7 @@ export function createInboxUI({
     if (headerKey !== state.headerKey) {
       state.headerKey = headerKey;
       document.querySelector("#chat-head").innerHTML =
-        `<div class="chat-heading"><button class="quiet chat-back" id="back-list" aria-label="返回会话列表">←</button><div><strong>${E(c.name)} <span class="badge neutral">${statusNames[c.status]}</span></strong><button class="quiet small" id="edit-subject" title="编辑主题">${E(c.subject)} ✎</button></div></div><div class="row chat-actions"><button class="quiet" id="show-visitor">访客资料</button><select id="chat-owner" aria-label="分配客服">${options(state.members, c.assignee)}</select><select id="chat-status" aria-label="会话状态">${Object.entries(
+        `<div class="chat-heading"><button class="quiet chat-back" id="back-list" aria-label="返回会话列表">←</button><div><strong>${E(c.name)} <span class="badge neutral">${statusNames[c.status]}</span></strong><button class="quiet small" id="edit-subject" title="编辑主题">${E(c.subject)} ✎</button></div></div><div class="row chat-actions"><button class="quiet" id="show-visitor">访客资料</button>${!c.assignee && c.status !== "closed" ? '<button id="claim-conversation" type="button">接入会话</button>' : ""}<select id="chat-owner" aria-label="分配客服">${options(state.members, c.assignee)}</select><select id="chat-status" aria-label="会话状态">${Object.entries(
           statusNames,
         )
           .map(
@@ -630,6 +638,10 @@ export function createInboxUI({
           "保存",
           (b) => change(b),
         );
+      document.querySelector("#claim-conversation")?.addEventListener(
+        "click",
+        safe(() => change({ assignee: getMe().id })),
+      );
       document.querySelector("#chat-owner").onchange = safe((e) =>
         change({ assignee: e.target.value }),
       );
@@ -642,6 +654,9 @@ export function createInboxUI({
       document.querySelector("#show-visitor").onclick = () =>
         visitorDialog(state.detail.conversation);
     }
+    document.querySelector("#chat-list-context").hidden = state.items.some(
+      (item) => item.id === c.id,
+    );
     paintPending();
     const threadKey = JSON.stringify([data.messages, data.receipts]);
     if (threadKey !== state.threadKey) {
@@ -651,12 +666,11 @@ export function createInboxUI({
           el.scrollHeight - el.scrollTop - el.clientHeight < 90;
       state.threadKey = threadKey;
       el.innerHTML = data.messages.length
-        ? data.messages
-            .map(
-              (m) =>
-                `<div class="message ${m.role}"><div class="bubble ${m.attachment ? "attachment-bubble" : ""}">${m.attachment ? media.render(m.attachment) : renderMessage(m.body, { plain: m.role === "visitor" || m.role === "note" })}</div><div class="small">${E(m.role === "visitor" ? c.name : m.role === "note" ? (m.senderName || "客服") + " · 内部备注" : m.source === "ai" ? "AI 助手" : m.source === "system" ? "系统" : m.senderName || "客服")} · ${new Date(m.created).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}${m.role === "agent" && m.source !== "system" ? " " + receiptMarkup(m.seq, data.receipts) : ""}</div></div>`,
-            )
-            .join("")
+        ? withMessageDays(
+            data.messages,
+            (m) =>
+              `<div class="message ${m.role}"><div class="bubble ${m.attachment ? "attachment-bubble" : ""}">${m.attachment ? media.render(m.attachment) : renderMessage(m.body, { plain: m.role === "visitor" || m.role === "note" })}</div><div class="small">${E(m.role === "visitor" ? c.name : m.role === "note" ? (m.senderName || "客服") + " · 内部备注" : m.source === "ai" ? "AI 助手" : m.source === "system" ? "系统" : m.senderName || "客服")} · ${new Date(m.created).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}${m.role === "agent" && m.source !== "system" ? " " + receiptMarkup(m.seq, data.receipts) : ""}</div></div>`,
+          )
         : '<p class="small thread-welcome">对话已建立，等待访客消息。</p>';
       media.bind(el);
       bindMessageActions(el, (text) => {
@@ -730,14 +744,43 @@ export function createInboxUI({
   function drawVisitor(c) {
     state.notesDirty = noteDrafts.has(c.id);
     const profile = c.profile || {};
+    let panelWidth = 320;
+    try {
+      const saved = Number(localStorage.getItem("fc_visitor_panel_width"));
+      if (saved >= 280 && saved <= 600) panelWidth = saved;
+    } catch {}
+    document
+      .querySelector(".inbox")
+      .style.setProperty("--visitor-panel-width", `${panelWidth}px`);
     document.querySelector("#visitor-panel").innerHTML =
-      `<div class="visitor-profile-head"><div class="avatar">${E((c.name || "?")[0])}</div><div><h2>${E(c.name)}</h2><span class="small">${profile.platform ? E(profile.platform) : "访客"} · 访客提供</span></div></div><section class="visitor-info-section"><h3>联系信息</h3><dl><div class="visitor-info-row"><dt>邮箱</dt><dd>${E(c.email || "未提供")}</dd></div><div class="visitor-info-row"><dt>当前状态</dt><dd id="visitor-state"></dd></div><div class="visitor-info-row"><dt>负责客服</dt><dd id="visitor-assignee"></dd></div></dl></section>${profileDetails(profile)}<section class="visitor-info-section"><div class="field"><label for="visitor-priority">优先级</label><select id="visitor-priority">${Object.entries(
+      `<div class="visitor-panel-toolbar"><strong>访客资料</strong><details><summary>调整宽度</summary><label for="visitor-panel-width">资料栏宽度</label><input id="visitor-panel-width" type="range" min="280" max="600" step="10" value="${panelWidth}"></details></div><div class="visitor-profile-head"><div class="avatar">${E((c.name || "?")[0])}</div><div><h2>${E(c.name)}</h2><span class="small">${profile.platform ? E(profile.platform) : "访客"} · 访客资料</span></div></div><section class="visitor-info-section"><h3>联系信息</h3><dl><div class="visitor-info-row"><dt>邮箱</dt><dd>${E(c.email || "未提供")}</dd></div><div class="visitor-info-row"><dt>会话状态</dt><dd id="visitor-state"></dd></div><div class="visitor-info-row"><dt>负责客服</dt><dd id="visitor-assignee"></dd></div></dl></section>${profileDetails(profile)}<section class="visitor-info-section"><div class="field"><label for="visitor-priority">优先级</label><select id="visitor-priority">${Object.entries(
         priorityNames,
       )
         .map(([k, v]) => `<option value="${k}">${v}</option>`)
         .join(
           "",
         )}</select></div><label for="visitor-notes" class="small">客户备注</label><textarea id="visitor-notes" placeholder="记录需要交接的信息…"></textarea><button id="save-notes">保存备注</button></section>`;
+    document.querySelector("#visitor-panel-width").oninput = (event) => {
+      const width = event.target.value;
+      document
+        .querySelector(".inbox")
+        .style.setProperty("--visitor-panel-width", `${width}px`);
+      try {
+        localStorage.setItem("fc_visitor_panel_width", width);
+      } catch {}
+    };
+    const historyButton = document.createElement("button");
+    historyButton.type = "button";
+    historyButton.className = "visitor-history-button";
+    historyButton.textContent = "查看历史会话";
+    historyButton.onclick = safe(() => visitorHistory(c));
+    document.querySelector("#visitor-panel").append(historyButton);
+    const editProfileButton = document.createElement("button");
+    editProfileButton.type = "button";
+    editProfileButton.className = "visitor-history-button";
+    editProfileButton.textContent = "编辑用户资料";
+    editProfileButton.onclick = () => editVisitorProfile(c);
+    document.querySelector("#visitor-panel").append(editProfileButton);
     document.querySelector("#visitor-notes").value =
       noteDrafts.get(c.id) ?? c.notes ?? "";
     document.querySelector("#visitor-notes").oninput = (e) => {
@@ -752,10 +795,64 @@ export function createInboxUI({
       toast("备注已保存");
     });
   }
-  function visitorDialog(c) {
+  function editVisitorProfile(c, onSaved = () => {}) {
+    const profile = c.profile || {};
+    const field = (key, label) =>
+      `<div class="field"><label>${label}<input name="${key}" maxlength="200" value="${E(profile[key] || "")}"></label></div>`;
     modal(
+      "编辑用户资料",
+      `${field("displayName", "姓名")}${field("phone", "电话")}${field("company", "公司")}${field("jobTitle", "职位")}<div class="field"><label>自定义信息（JSON 对象）<textarea name="custom" rows="5">${E(JSON.stringify(profile.custom || {}, null, 2))}</textarea></label></div><p class="small">设备和来源等其他资料会保留。资料变更不会合并访客身份。</p>`,
+      "保存",
+      async (b) => {
+        let custom;
+        try {
+          custom = JSON.parse(b.custom);
+        } catch {
+          throw Error("自定义信息必须是有效 JSON 对象");
+        }
+        await api("/conversations/" + c.id + "/visitor-profile", {
+          method: "PATCH",
+          body: JSON.stringify({
+            expectedRevision: c.profile_revision,
+            profile: {
+              displayName: b.displayName,
+              phone: b.phone,
+              company: b.company,
+              jobTitle: b.jobTitle,
+              custom,
+            },
+          }),
+        });
+        toast("用户资料已保存");
+        await refresh();
+        onSaved(state.detail?.conversation);
+      },
+    );
+  }
+  async function visitorHistory(c, parentDialog = null) {
+    const rows = await api(
+      "/visitors/" + encodeURIComponent(c.visitor_id) + "/conversations",
+    );
+    const o = modal(
+      "历史会话 · " + c.name,
+      `<p class="small">仅显示当前访客身份下、你有权查看的会话。相同邮箱不会自动合并身份。</p><div class="visitor-history-list">${rows.map((item) => `<button type="button" data-history-id="${E(item.id)}"><strong>${E(item.subject || "未命名会话")}</strong><span class="small">${E(statusNames[item.status] || item.status)} · ${E(new Date(item.updated).toLocaleString())}${item.id === c.id ? " · 当前会话" : ""}</span></button>`).join("")}</div>`,
+      "关闭",
+    );
+    o.querySelectorAll("[data-history-id]").forEach((button) => {
+      button.onclick = () => {
+        const id = button.dataset.historyId;
+        o.querySelector("[data-close]").click();
+        if (id !== state.active) {
+          parentDialog?.querySelector("[data-close]").click();
+          select(id);
+        }
+      };
+    });
+  }
+  function visitorDialog(c) {
+    const o = modal(
       "访客与会话",
-      `<h3>${E(c.name)}</h3><p class="small">${E(c.email || "未提供邮箱")} · 访客提供</p>${profileDetails(c.profile || {})}<div class="field"><label for="dialog-status">状态</label><select name="status" id="dialog-status">${Object.entries(
+      `<h3>${E(c.name)}</h3><p class="small">${E(c.email || "未提供邮箱")} · 访客资料</p><div id="dialog-profile-details">${profileDetails(c.profile || {})}</div><div class="row"><button type="button" id="dialog-history">查看历史会话</button><button type="button" id="dialog-edit-profile">编辑用户资料</button></div><div class="field"><label for="dialog-status">状态</label><select name="status" id="dialog-status">${Object.entries(
         statusNames,
       )
         .map(
@@ -772,6 +869,16 @@ export function createInboxUI({
         noteDrafts.delete(c.id);
       },
     );
+    o.querySelector("#dialog-history").onclick = safe(() =>
+      visitorHistory(c, o),
+    );
+    o.querySelector("#dialog-edit-profile").onclick = () =>
+      editVisitorProfile(state.detail?.conversation || c, (updated) => {
+        if (updated?.id === c.id && o.isConnected)
+          o.querySelector("#dialog-profile-details").innerHTML = profileDetails(
+            updated.profile || {},
+          );
+      });
   }
   async function replyChooser(c) {
     try {
@@ -824,6 +931,7 @@ export function createInboxUI({
       assignee: "all",
       priority: "all",
       unread: false,
+      handoffPending: false,
       q: "",
     };
     state.active = id;

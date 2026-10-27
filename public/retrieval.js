@@ -4,6 +4,7 @@ export function createRetrievalUI({
   modal,
   toast,
   isAdmin = () => false,
+  onChange = () => {},
 }) {
   const safe = (fn) => async (e) => {
     try {
@@ -49,11 +50,13 @@ export function createRetrievalUI({
             expectedRevision: config.revision,
           }),
         });
+        onChange();
         if (b.build)
           await api(
             "/knowledge/retrieval/collections/" + collection.id + "/index",
             { method: "POST" },
           );
+        if (b.build) onChange();
         toast(b.build ? "配置已保存，索引任务已入队" : "检索配置已保存");
       },
     );
@@ -66,6 +69,7 @@ export function createRetrievalUI({
     );
     const load = async () => {
       const { config, jobs } = await snapshot(collection.id);
+      onChange();
       const target = o.querySelector("#embedding-status");
       if (!target) return;
       target.innerHTML = `<p><strong>${config.indexed} / ${config.total}</strong> 个分块有效 · 待处理 ${config.pending}</p>${config.error ? `<p class="error">${E(config.error)}</p>` : ""}${isAdmin() ? '<button type="button" id="embedding-build">按已保存配置建立 / 更新索引</button>' : ""}<p class="small">保留成功批次；失败最多尝试 3 次。取消或配置变化后停止后续请求，已发出的供应商请求可能仍产生用量。</p>${jobs.map((j) => `<article class="panel"><strong>${state[j.status] || E(j.status)} · ${j.done}/${j.total}</strong><p class="small">尝试 ${j.attempts} 次 · ${E(new Date(j.created).toLocaleString())}</p>${j.error ? `<p class="small">${E(j.error)}</p>` : ""}${isAdmin() && ["queued", "running"].includes(j.status) ? `<button type="button" data-cancel-index="${j.id}">取消</button>` : ""}</article>`).join("") || '<p class="small">暂无索引任务</p>'}`;

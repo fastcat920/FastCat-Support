@@ -6,7 +6,7 @@ export function createAgentEditor({ api, E, modal, toast, onSaved }) {
       toast(e.message);
     }
   };
-  return async function edit(existing) {
+  return async function edit(existing, { duplicate = false } = {}) {
     const [models, collections, tools, workflows, agents, defaults, devices] =
       await Promise.all([
         api("/ai/models"),
@@ -36,9 +36,9 @@ export function createAgentEditor({ api, E, modal, toast, onSaved }) {
     const check = (name, label, value) =>
       `<label class="retrieval-checkbox"><input name="${name}" type="checkbox" ${value ? "checked" : ""}>${label}</label>`;
     const o = modal(
-      existing ? "编辑智能体" : "创建智能体",
+      duplicate ? "复制智能体" : existing ? "编辑智能体" : "创建智能体",
       `
-   <section class="agent-editor-section"><h3>基本信息</h3><div class="service-form-grid">${field("name", "名称", existing?.name || "")}${field("profession", "职业/角色", c.profession || "")}</div></section>
+   <section class="agent-editor-section"><h3>基本信息</h3><div class="service-form-grid">${field("name", "名称", duplicate ? `${existing.name} 副本` : existing?.name || "")}${field("profession", "职业/角色", c.profession || "")}</div></section>
    <section class="agent-editor-section"><h3>模型配置</h3><div class="field"><label>对话模型<select name="modelId" required><option value="">${available.length ? "请选择模型" : "暂无可用模型，请先到模型管理添加"}</option>${available.map((m) => `<option value="${m.id}" ${m.id === initial ? "selected" : ""}>${E(m.name)} · ${E(m.provider_name)}</option>`).join("")}</select></label></div><p class="small">新建时预选工作空间默认模型。保存后绑定具体模型，后续默认设置变化不会自动替换。</p></section>
    <section class="agent-editor-section"><h3>能力描述</h3><div class="field"><label>详细提示词/服务指令<textarea name="description" rows="5" required>${E(existing?.description || "")}</textarea></label></div></section>
    <details class="agent-editor-section"><summary>高级配置</summary>${check("markdown", "使用 Markdown 格式回答", c.markdown ?? false)}${check("skillsEnabled", "启用 Skills 自动发现与读取", c.skillsEnabled ?? false)}${check("addDatetime", "在上下文中添加当前日期时间", c.addDatetime ?? false)}<div class="service-form-grid">${field("historyRuns", "历史会话轮数（0–20）", c.historyRuns ?? 15, "number")}${field("toolCallLimit", "工具调用总次数（1–50）", c.toolCallLimit ?? 16, "number")}${field("maxToolRounds", "模型调用轮数（含最终回答，1–5）", c.maxToolRounds ?? 3, "number")}</div><details><summary>多智能体协作（可选扩展）</summary>${check("collaborationEnabled", "启用协作", c.collaboration?.enabled)}<div class="field"><label>协作成员（2–4 位）<select name="members" multiple size="4">${agents
@@ -51,7 +51,7 @@ export function createAgentEditor({ api, E, modal, toast, onSaved }) {
        "",
      )}</select></label></div>${field("rounds", "讨论轮数（1–3）", c.collaboration?.rounds || 1, "number")}</details></details>
    <section class="agent-editor-section"><h3>资源关联</h3><h4>绑定设备</h4><div class="field"><label>设备<select name="boundDeviceId"><option value="">不绑定设备</option>${devices.map((d) => `<option value="${d.id}" ${c.boundDeviceId === d.id ? "selected" : ""} ${d.enabled ? "" : "disabled"}>${E(d.name)} · ${d.status === "online" ? "在线" : "离线"}</option>`).join("")}</select></label></div><p class="small">仅绑定设备声明的操作可用。启用截图会向所选模型发送屏幕内容；控制操作需设备本地显式授权。</p><h4>知识库</h4><div class="field"><label>知识范围<select name="knowledgeScope"><option value="none">不使用知识库</option><option value="selected">仅使用所选知识库</option><option value="all">使用全部知识库（含以后新增）</option></select></label></div><div id="agent-collections"></div><button type="button" id="choose-agent-collections">选择知识库</button><h4>工具操作</h4><div id="agent-tools"></div><button type="button" id="choose-agent-tools">绑定工具操作</button><p class="small">仅授权选中的操作，不自动重试远程操作。</p><h4>工作流</h4><div id="agent-workflows"></div><button type="button" id="choose-agent-workflows">选择工作流</button><p class="small">模型可主动调用绑定工作流的已发布版本；未发布的工作流不能执行。最多嵌套 3 层，禁止循环调用。</p></section><p id="agent-form-error" class="error" role="alert"></p><button type="reset" id="reset-agent-form">重置</button>`,
-      existing ? "保存" : "创建智能体",
+      existing && !duplicate ? "保存" : "创建智能体",
       async (b) => {
         const chosen = available.find((m) => m.id === b.modelId);
         if (!chosen) throw Error("请选择可用的对话模型");
@@ -84,15 +84,18 @@ export function createAgentEditor({ api, E, modal, toast, onSaved }) {
         };
         delete config.collectionId;
         try {
-          await api(existing ? "/resources/" + existing.id : "/resources", {
-            method: existing ? "PATCH" : "POST",
-            body: JSON.stringify({
-              kind: "agent",
-              name: b.name.trim(),
-              description: b.description.trim(),
-              config,
-            }),
-          });
+          await api(
+            existing && !duplicate ? "/resources/" + existing.id : "/resources",
+            {
+              method: existing && !duplicate ? "PATCH" : "POST",
+              body: JSON.stringify({
+                kind: "agent",
+                name: b.name.trim(),
+                description: b.description.trim(),
+                config,
+              }),
+            },
+          );
           toast("智能体已保存");
           await onSaved();
         } catch (e) {

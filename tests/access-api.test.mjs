@@ -317,10 +317,24 @@ test("local file access is opt-in for web channels and custom icon URL is valida
   assert.equal(invalid.status, 400);
   const uploaded = await call("/api/access/channels/" + web.id, "PUT", {
     ...changed.data,
-    widget: { ...changed.data.widget, launcherIconUrl: png },
+    widget: { ...changed.data.widget, launcherIconUrl: png, logoUrl: png },
     expectedRevision: changed.data.revision,
   });
   assert.equal(uploaded.status, 200);
+  assert.equal(uploaded.data.widget.logoUrl, png);
+  assert.equal(
+    (
+      await call("/api/access/channels/" + web.id, "PUT", {
+        ...uploaded.data,
+        widget: {
+          ...uploaded.data.widget,
+          logoUrl: "data:image/png;base64,PHNjcmlwdD4=",
+        },
+        expectedRevision: uploaded.data.revision,
+      })
+    ).status,
+    400,
+  );
   assert.equal(
     (await call(configPath, "GET", undefined, { Origin: "null" })).data.widget
       .launcherIconUrl,
@@ -392,6 +406,53 @@ test("visitor email is required and supplied profile stays isolated by visitor t
     .conversation;
   assert.equal(detail.profile.phone, "123");
   assert.equal(detail.profile.company, "Acme");
+  const revision = detail.profile_revision;
+  const profilePath =
+    "/api/conversations/" + first.data.id + "/visitor-profile";
+  assert.equal(
+    (
+      await call(
+        profilePath,
+        "PATCH",
+        { expectedRevision: revision, profile: { phone: "unauthorized" } },
+        { Cookie: "" },
+      )
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await call(profilePath, "PATCH", {
+        expectedRevision: revision,
+        profile: { displayName: "Alice", custom: { plan: "Business" } },
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await call(profilePath, "PATCH", {
+        expectedRevision: revision,
+        profile: { phone: "stale" },
+      })
+    ).status,
+    409,
+  );
+  detail = (await call("/api/conversations/" + first.data.id)).data
+    .conversation;
+  assert.equal(detail.profile.displayName, "Alice");
+  assert.equal(detail.profile.company, "Acme");
+  assert.equal(detail.profile.device, "Phone");
+  assert.equal(detail.profile.custom.plan, "Business");
+  assert.equal(
+    (
+      await call(profilePath, "PATCH", {
+        expectedRevision: detail.profile_revision,
+        profile: { externalId: "forbidden" },
+      })
+    ).status,
+    400,
+  );
   assert.equal(
     (await call("/api/conversations/" + second.data.id)).data.conversation
       .profile.phone,

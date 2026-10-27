@@ -100,6 +100,37 @@ after(async () => {
   await new Promise((resolve) => model.close(resolve));
   rmSync(dir, { recursive: true, force: true });
 });
+test("batch Q&A import is indexed and invalid batches create no entries", async () => {
+  const path = "/knowledge/qa/import";
+  const before = (await call("/resources?kind=knowledge")).data.length;
+  const invalid = await call(path, "POST", {
+    collectionId: "default",
+    format: "json",
+    data: JSON.stringify([
+      { question: "有效问题", answer: "有效答案" },
+      { question: "", answer: "无效" },
+    ]),
+  });
+  assert.equal(invalid.status, 400);
+  assert.equal((await call("/resources?kind=knowledge")).data.length, before);
+  const result = await call(path, "POST", {
+    collectionId: "default",
+    format: "csv",
+    data: "question,answer,category\n订单测试问题,订单测试答案,订单",
+  });
+  assert.equal(result.status, 201);
+  assert.equal(result.data.count, 1);
+  const rows = (await call("/resources?kind=knowledge")).data;
+  assert.equal(
+    rows.find((r) => r.name === "订单测试问题")?.config.category,
+    "订单",
+  );
+  assert.ok(
+    (await call("/search?q=" + encodeURIComponent("订单测试问题"))).data.some(
+      (r) => r.name === "订单测试问题",
+    ),
+  );
+});
 test("business hours use local weekdays and carry overnight shifts into next day", () => {
   const h = {
     enabled: true,

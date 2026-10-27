@@ -1,3 +1,5 @@
+import { widgetChatMarkup } from "./widget-chat-markup.js";
+import { withMessageDays } from "./message-days.js";
 import { receiptMarkup } from "./message-status.js";
 import { setLanguage, observeLanguage } from "./i18n.js";
 import { resolveAppearance, applyAppearance } from "./appearance.js";
@@ -196,8 +198,7 @@ function chat() {
   receiptCursor = 0;
   readCursor = 0;
   outbox?.close();
-  root.innerHTML =
-    '<div class="messages" id="messages"></div><p class="error" role="alert"></p><div id="widget-outbox"></div><form class="composer"><textarea name="body" maxlength="10000" aria-label="消息内容" placeholder="输入你想咨询的问题…"></textarea><input id="widget-file" type="file" hidden><div class="composer-footer"><div class="row"><button id="upload-file" type="button" class="quiet small" aria-label="上传并发送附件">⌁ 附件</button></div><span class="small send-hint">Enter 发送 · Shift+Enter 换行</span><button class="primary" type="submit">发送 ↗</button></div></form>';
+  root.innerHTML = widgetChatMarkup;
   outbox = createOutbox({
     owner: "visitor:" + currentSession.id,
     canSend: () => session?.id === currentSession.id,
@@ -344,12 +345,11 @@ async function refresh() {
       if (el) {
         const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 90;
         el.innerHTML =
-          m
-            .map(
-              (x) =>
-                `<div class="message ${x.role === "visitor" ? "agent" : ""}"><div class="bubble ${x.attachment ? "attachment-bubble" : ""}">${x.attachment ? media.render(x.attachment) : renderMessage(x.body, { plain: x.role === "visitor" })}</div><div class="small">${x.role === "visitor" ? "你" : x.source === "ai" ? "AI 助手" : x.source === "system" ? "系统" : E(x.senderName || "客服")} · ${new Date(x.created).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}${x.role === "visitor" ? " " + receiptMarkup(x.seq, d.receipts) : ""}</div></div>`,
-            )
-            .join("") +
+          withMessageDays(
+            m,
+            (x) =>
+              `<div class="message ${x.role === "visitor" ? "agent" : ""}"><div class="bubble ${x.attachment ? "attachment-bubble" : ""}">${x.attachment ? media.render(x.attachment) : renderMessage(x.body, { plain: x.role === "visitor" })}</div><div class="small">${x.role === "visitor" ? "你" : x.source === "ai" ? "AI 助手" : x.source === "system" ? "系统" : E(x.senderName || "客服")} · ${new Date(x.created).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}${x.role === "visitor" ? " " + receiptMarkup(x.seq, d.receipts) : ""}</div></div>`,
+          ) +
           (a.typing
             ? `<div class="message"><div class="bubble ai-stream">${E(a.draft || "正在思考…")}<span class="typing-dot"></span></div><div class="small">AI 助手 · 正在回复</div></div>`
             : "");

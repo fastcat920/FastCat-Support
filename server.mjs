@@ -2,6 +2,7 @@ import {
   visitorIdentity,
   cleanVisitorProfile,
 } from "./lib/visitor-profile.mjs";
+import { parseQaImport } from "./lib/qa-import.mjs";
 import { createSkills } from "./lib/skills.mjs";
 import { createDevices } from "./lib/devices.mjs";
 import { createAgentExtensions } from "./lib/agent-extensions.mjs";
@@ -98,6 +99,15 @@ if (
     .some((c) => c.name === "profile")
 )
   db.exec("ALTER TABLE visitors ADD COLUMN profile TEXT NOT NULL DEFAULT '{}'");
+if (
+  !db
+    .prepare("PRAGMA table_info(visitors)")
+    .all()
+    .some((c) => c.name === "profile_revision")
+)
+  db.exec(
+    "ALTER TABLE visitors ADD COLUMN profile_revision INTEGER NOT NULL DEFAULT 0",
+  );
 migrateService(db);
 migrateMedia(db);
 migrateProviders(db);
@@ -238,7 +248,7 @@ function messagePage(id, url, visitor = false) {
 function conversation(id) {
   return db
     .prepare(
-      "SELECT c.*,v.name,v.email,v.notes,v.profile FROM conversations c JOIN visitors v ON v.id=c.visitor_id WHERE c.id=?",
+      "SELECT c.*,v.name,v.email,v.notes,v.profile,v.profile_revision FROM conversations c JOIN visitors v ON v.id=c.visitor_id WHERE c.id=?",
     )
     .get(id);
 }
@@ -416,7 +426,7 @@ const server = http.createServer(async (req, res) => {
         const profile = cleanVisitorProfile(b.profile ?? {});
         const email = b.email === undefined ? c.email : validateEmail(b.email);
         db.prepare(
-          "UPDATE visitors SET email=?,name=?,profile=? WHERE id=?",
+          "UPDATE visitors SET email=?,name=?,profile=?,profile_revision=profile_revision+1 WHERE id=?",
         ).run(
           email,
           b.email === undefined ? c.name : email,
@@ -732,6 +742,56 @@ const server = http.createServer(async (req, res) => {
       }
       if (p === "/api/conversations" && method === "GET")
         return send(res, 200, listConversations(db, u, url.searchParams));
+      const visitorProfileRoute = p.match(
+        /^\/api\/conversations\/([^/]+)\/visitor-profile$/,
+      );
+      if (visitorProfileRoute && method === "PATCH") {
+        const b = await body(req);
+        const fresh = user(req);
+        const current = conversation(visitorProfileRoute[1]);
+        if (!fresh) return send(res, 401, { error: "请先登录" });
+        if (!current) return send(res, 404, { error: "会话不存在" });
+        assertConversationAccess(fresh, current);
+        if (
+          !Number.isInteger(b.expectedRevision) ||
+          b.expectedRevision !== current.profile_revision
+        )
+          return send(res, 409, { error: "访客资料已更新，请刷新后重试" });
+        const allowed = [
+          "displayName",
+          "phone",
+          "company",
+          "jobTitle",
+          "custom",
+        ];
+        if (
+          !b.profile ||
+          typeof b.profile !== "object" ||
+          Array.isArray(b.profile) ||
+          Object.keys(b.profile).some((key) => !allowed.includes(key))
+        )
+          return send(res, 400, { error: "访客资料字段无效" });
+        const profile = cleanVisitorProfile(b.profile);
+        const result = db
+          .prepare(
+            "UPDATE visitors SET profile=?,profile_revision=profile_revision+1 WHERE id=? AND profile_revision=?",
+          )
+          .run(
+            JSON.stringify({
+              ...JSON.parse(current.profile || "{}"),
+              ...profile,
+            }),
+            current.visitor_id,
+            b.expectedRevision,
+          );
+        if (!result.changes)
+          return send(res, 409, { error: "访客资料已更新，请刷新后重试" });
+        for (const row of db
+          .prepare("SELECT id FROM conversations WHERE visitor_id=?")
+          .all(current.visitor_id))
+          broadcast(row.id);
+        return send(res, 200, { ok: true, revision: b.expectedRevision + 1 });
+      }
       const receiptRoute = p.match(/^\/api\/conversations\/([^/]+)\/receipts$/);
       if (receiptRoute && method === "POST") {
         const c = conversation(receiptRoute[1]);
@@ -890,6 +950,49 @@ const server = http.createServer(async (req, res) => {
             .all(...(u.role === "admin" ? [] : [u.id]))
             .map((v) => ({ ...v, profile: JSON.parse(v.profile || "{}") })),
         );
+      if (p === "/api/knowledge/qa/import" && method === "POST") {
+        const b = await body(req);
+        if (user(req)?.role !== "admin")
+          return send(res, 403, { error: "管理员权限已变化" });
+        if (
+          typeof b.collectionId !== "string" ||
+          !db
+            .prepare("SELECT id FROM collections WHERE id=?")
+            .get(b.collectionId)
+        )
+          return send(res, 400, { error: "知识库不存在" });
+        const items = parseQaImport(b.format, b.data);
+        db.exec("SAVEPOINT qa_import");
+        try {
+          const insert = db.prepare(
+            "INSERT INTO resources VALUES(?,?,?,?,?,?)",
+          );
+          for (const item of items) {
+            const id = uid();
+            const description = `问题：${item.question}\n答案：${item.answer}`;
+            const config = {
+              source: "qa",
+              collectionId: b.collectionId,
+              ...item,
+            };
+            insert.run(
+              id,
+              "knowledge",
+              item.question,
+              description,
+              JSON.stringify(config),
+              now(),
+            );
+            indexKnowledge(db, id);
+          }
+          db.exec("RELEASE qa_import");
+        } catch (error) {
+          db.exec("ROLLBACK TO qa_import");
+          db.exec("RELEASE qa_import");
+          throw error;
+        }
+        return send(res, 201, { count: items.length });
+      }
       if (p === "/api/resources" && method === "GET")
         return send(
           res,

@@ -1,3 +1,8 @@
+export function platformSnippet(type, origin, key) {
+  return type === "web"
+    ? `<script src="${origin}/embed.js" data-app-key="${key}" charset="utf-8" defer></script>`
+    : `final support = FastCatClient(\n  baseUrl: Uri.parse('${origin}'),\n  appKey: '${key}',\n);\nawait support.start(email: 'customer@example.com');\n// FastCatChat(client: support)`;
+}
 export function createAccessUI({ api, E, modal, toast }) {
   const safe = (fn) => async () => {
     try {
@@ -26,12 +31,19 @@ export function createAccessUI({ api, E, modal, toast }) {
       off: "纯人工",
     })[mode] || mode;
   let selected = null,
+    selectedConfigTab = "basic",
+    telegramCheck = null,
     renderRevision = 0;
+  const setPlatformRoute = (id) => {
+    const hash = id ? "#channel/" + encodeURIComponent(id) : "#channel";
+    if (location.hash !== hash) history.pushState(null, "", hash);
+  };
   function platformForm(title, html, submit, onSubmit) {
     const target = document.querySelector("#platform-detail");
     target.innerHTML = `<header class="platform-detail-head"><div><p class="small">平台配置</p><h1>${E(title)}</h1></div><button type="button" data-close>返回平台概览</button></header><div class="platform-config-body"><div class="platform-form-main"><nav class="tabs" id="platform-config-tabs"></nav><form>${html}<p class="error" role="alert" id="platform-form-error"></p><footer class="platform-save-bar"><button type="button" id="platform-cancel">取消修改</button><button type="submit" class="primary">${submit}</button></footer></form></div><aside class="platform-preview" hidden></aside></div>`;
     target.querySelector("[data-close]").onclick = () => {
       selected = null;
+      setPlatformRoute(null);
       render();
     };
     target.querySelector("#platform-cancel").onclick = () => render();
@@ -41,6 +53,8 @@ export function createAccessUI({ api, E, modal, toast }) {
       ai: "AI 接待",
       appearance: "组件外观",
       integration: "安装与接入",
+      operators: "客服绑定",
+      diagnostics: "连接与消息",
     };
     if (sections.length) {
       target.querySelector("#platform-config-tabs").innerHTML = sections
@@ -50,6 +64,7 @@ export function createAccessUI({ api, E, modal, toast }) {
         )
         .join("");
       const selectTab = (id) => {
+        selectedConfigTab = id;
         sections.forEach((s) => (s.hidden = s.dataset.platformSection !== id));
         target
           .querySelectorAll("[data-config-tab]")
@@ -60,15 +75,24 @@ export function createAccessUI({ api, E, modal, toast }) {
       target
         .querySelectorAll("[data-config-tab]")
         .forEach((b) => (b.onclick = () => selectTab(b.dataset.configTab)));
-      selectTab("basic");
+      selectTab(
+        sections.some((s) => s.dataset.platformSection === selectedConfigTab)
+          ? selectedConfigTab
+          : sections[0].dataset.platformSection,
+      );
     }
     const preview = target.querySelector("#widget-design-preview");
     if (preview) {
       const aside = target.querySelector(".platform-preview");
       aside.hidden = false;
       aside.innerHTML =
-        '<h3>实时预览</h3><p class="small">调整组件标题、主题色和欢迎语，即时查看效果。</p>';
+        '<h3>实时预览</h3><p class="small">未保存的外观会实时显示；预览中的消息不会发送。</p>';
       aside.append(preview);
+      const launcher = document.createElement("div");
+      launcher.className = "platform-launcher-preview";
+      launcher.innerHTML =
+        "<span data-preview-launcher>F</span><span data-preview-position></span>";
+      aside.append(launcher);
     }
     target.querySelector("form").onsubmit = async (event) => {
       event.preventDefault();
@@ -89,6 +113,14 @@ export function createAccessUI({ api, E, modal, toast }) {
   }
   async function render() {
     const revision = ++renderRevision;
+    const route = location.hash.match(/^#channel\/([^/]+)$/);
+    if (route) {
+      try {
+        selected = decodeURIComponent(route[1]);
+      } catch {
+        selected = null;
+      }
+    } else if (location.hash === "#channel") selected = null;
     const [channels, tg] = await Promise.all([
       api("/access/channels"),
       api("/access/telegram"),
@@ -101,15 +133,30 @@ export function createAccessUI({ api, E, modal, toast }) {
       !channels.some((c) => c.id === selected)
     )
       selected = null;
-    root.innerHTML = `<div class="platform-workspace"><aside class="platform-list"><header><div><h2>接入平台</h2><p class="small">${channels.filter((c) => c.enabled).length + (tg.enabled ? 1 : 0)} 个已启用</p></div><button id="access-create" class="primary" aria-label="添加网页或 SDK 平台">＋ 添加平台</button></header><nav aria-label="平台列表">${channels.map((c) => `<button class="platform-list-item ${selected === c.id ? "active" : ""}" data-platform="${c.id}"><span class="platform-kind">${c.type === "web" ? "网" : "SDK"}</span><span><strong>${E(c.name)}</strong><small>${c.type === "web" ? "网页端" : "Flutter / Dart"} · ${c.enabled ? "已启用" : "已停用"}</small></span><span class="platform-status ${c.enabled ? "enabled" : ""}"></span></button>`).join("")}${`<button class="platform-list-item ${selected === "telegram" ? "active" : ""}" data-platform="telegram"><span class="platform-kind">TG</span><span><strong>Telegram 客服话题</strong><small>${tg.enabled ? "已启用" : "未启用"} · 仅客服回复</small></span><span class="platform-status ${tg.enabled ? "enabled" : ""}"></span></button>`}</nav></aside><section id="platform-detail" class="platform-detail"></section></div>`;
-    root.querySelector("#access-create").onclick = safe(() => {
-      selected = "new";
-      edit();
-    });
+    const telegramStatus =
+      telegramCheck?.revision === tg.revision
+        ? telegramCheck.message
+        : tg.tokenConfigured && tg.chatId
+          ? "已配置 · 未检测连接"
+          : "待配置";
+    root.innerHTML = `<div class="platform-workspace"><aside class="platform-list"><header><div><h2>接入平台</h2><p class="small">${channels.filter((c) => c.enabled).length + (tg.enabled ? 1 : 0)} 个已启用</p></div><button id="access-create" class="primary" aria-label="添加网页或 SDK 平台">＋ 添加平台</button></header><nav aria-label="平台列表">${channels.map((c) => `<button class="platform-list-item ${selected === c.id ? "active" : ""}" data-platform="${c.id}"><span class="platform-kind">${c.type === "web" ? "网" : "SDK"}</span><span><strong>${E(c.name)}</strong><small>${c.type === "web" ? "网页端" : "Flutter / Dart"} · ${c.enabled ? "已启用" : "已停用"}</small></span><span class="platform-status ${c.enabled ? "enabled" : ""}"></span></button>`).join("")}${`<button class="platform-list-item ${selected === "telegram" ? "active" : ""}" data-platform="telegram"><span class="platform-kind">TG</span><span><strong>Telegram 客服话题</strong><small data-tg-state>${tg.enabled ? "已启用" : "未启用"} · ${E(telegramStatus)}</small></span><span class="platform-status ${tg.enabled ? "enabled" : ""}"></span></button>`}</nav></aside><section id="platform-detail" class="platform-detail"></section></div>`;
+    root.querySelector("#access-create").onclick = () =>
+      modal(
+        "添加接入平台",
+        `<p class="small">选择要连接的网站或应用。Telegram 客服话题可在左侧单独配置。</p><div class="field"><label>平台类型<select name="type"><option value="web">网页端</option><option value="sdk">Flutter / Dart SDK</option></select></label></div>`,
+        "继续",
+        async (values) => {
+          selected = "new";
+          selectedConfigTab = "basic";
+          await edit(null, values.type);
+        },
+      );
     root.querySelectorAll("[data-platform]").forEach(
       (b) =>
         (b.onclick = safe(async () => {
           selected = b.dataset.platform;
+          setPlatformRoute(selected);
+          selectedConfigTab = "basic";
           await render();
         })),
     );
@@ -128,15 +175,17 @@ export function createAccessUI({ api, E, modal, toast }) {
       (b) =>
         (b.onclick = safe(async () => {
           selected = b.dataset.openPlatform;
+          setPlatformRoute(selected);
+          selectedConfigTab = "basic";
           await render();
         })),
     );
   }
-  async function edit(existing) {
+  async function edit(existing, initialType = "web") {
     const revision = renderRevision;
     const c = existing || {
-      type: "web",
-      name: "新网站",
+      type: initialType,
+      name: initialType === "sdk" ? "新应用" : "新网站",
       title: "你好，有什么可以帮你？",
       enabled: false,
       origins: [],
@@ -152,16 +201,14 @@ export function createAccessUI({ api, E, modal, toast }) {
       !document.querySelector("#platform-detail")
     )
       return;
-    const code = () =>
-      c.type === "web"
-        ? `<script src="${location.origin}/embed.js" data-app-key="${c.public_key}" charset="utf-8" defer></script>`
-        : `final support = FastCatClient(\n  baseUrl: Uri.parse('${location.origin}'),\n  appKey: '${c.public_key}',\n);\nawait support.start(email: 'customer@example.com');\n// FastCatChat(client: support)`;
+    const code = () => platformSnippet(c.type, location.origin, c.public_key);
     let uploadedIcon = w.launcherIconUrl.startsWith("data:")
       ? w.launcherIconUrl
       : "";
+    let uploadedLogo = w.logoUrl.startsWith("data:") ? w.logoUrl : "";
     const o = platformForm(
       existing ? c.name + " 配置" : "添加网页 / SDK 平台",
-      `<section data-platform-section="basic">${!existing ? '<div class="field"><label>平台类型<select name="type"><option value="web">网页端</option><option value="sdk">Flutter / Dart SDK</option></select></label></div>' : ""}${input("平台名称", "name", c.name)}${input("组件标题", "title", c.title)}<label><input type="checkbox" name="enabled" ${c.enabled ? "checked" : ""}> 启用平台</label><div class="field"><label>允许的网站来源（每行一个完整 origin）<textarea name="origins" rows="2" placeholder="https://www.example.com">${E(c.origins.join("\n"))}</textarea></label><p class="small">网页嵌入与 Flutter Web 需要配置；原生 SDK 无需来源。</p><div data-local-preview><label class="retrieval-checkbox"><input type="checkbox" name="allowLocalFilePreview" ${w.allowLocalFilePreview ? "checked" : ""}>允许本地文件预览（file://）</label><p class="small">本地文件预览会允许来源为 null 的页面访问该平台；正式网站请配置具体来源。</p></div></div></section><section data-platform-section="ai"><h3>AI 接待策略</h3><div class="field"><label>接待模式<select name="ai_mode">${Object.entries(
+      `<section data-platform-section="basic">${!existing ? `<div class="field"><label>平台类型<select name="type"><option value="web" ${c.type === "web" ? "selected" : ""}>网页端</option><option value="sdk" ${c.type === "sdk" ? "selected" : ""}>Flutter / Dart SDK</option></select></label></div>` : ""}${input("平台名称", "name", c.name)}${input("组件标题", "title", c.title)}<label><input type="checkbox" name="enabled" ${c.enabled ? "checked" : ""}> 启用平台</label><div class="field"><label>允许的网站来源（每行一个完整 origin）<textarea name="origins" rows="2" placeholder="https://www.example.com">${E(c.origins.join("\n"))}</textarea></label><p class="small">网页嵌入与 Flutter Web 需要配置；原生 SDK 无需来源。</p><div data-local-preview><label class="retrieval-checkbox"><input type="checkbox" name="allowLocalFilePreview" ${w.allowLocalFilePreview ? "checked" : ""}>允许本地文件预览（file://）</label><p class="small">本地文件预览会允许来源为 null 的页面访问该平台；正式网站请配置具体来源。</p></div></div></section><section data-platform-section="ai"><h3>AI 接待策略</h3><div class="field"><label>接待模式<select name="ai_mode">${Object.entries(
         {
           inherit: "人工接待（默认）",
           auto: "AI 自动接待",
@@ -193,7 +240,7 @@ export function createAccessUI({ api, E, modal, toast }) {
         )
         .join(
           "",
-        )}</select></label></div>${input("客服入口图标 HTTPS 地址（选填）", "launcherIconUrl", w.launcherIconUrl.startsWith("data:") ? "" : w.launcherIconUrl)}<div class="field"><label>上传客服入口图标<input id="launcher-icon-file" type="file" accept="image/png,image/jpeg,image/webp"></label><button type="button" id="clear-launcher-icon">使用默认图标</button><span id="launcher-icon-status" class="small">${w.launcherIconUrl.startsWith("data:") ? "已上传图标" : ""}</span></div><p class="small">留空使用项目图标；建议使用正方形透明 PNG 或 WebP 图片。打开会话后显示关闭图标。</p>${input("Logo HTTPS 地址（选填）", "logoUrl", w.logoUrl)}<div class="field"><label>悬浮位置<select name="position">${["bottom-right", "bottom-left", "top-right", "top-left"].map((v, i) => `<option value="${v}" ${v === w.position ? "selected" : ""}>${["右下角", "左下角", "右上角", "左上角"][i]}</option>`).join("")}</select></label></div><div class="field"><label>欢迎语（留空人工接待（默认））<textarea name="welcomeMessage" rows="3" maxlength="3000">${E(w.welcomeMessage)}</textarea></label></div><p class="small">主题色使用后台配置；语言和明暗模式可跟随网页或客户端。Logo 与位置用于网页组件。</p><div id="widget-design-preview"><header><strong data-preview-title></strong></header><div class="platform-preview-messages"><p data-preview-welcome></p><div class="platform-preview-question">你好，我想咨询一个问题</div><p class="small">客服会在这里回复你</p></div><div class="platform-preview-composer">输入你的问题…</div></div></section><section data-platform-section="integration">${existing ? `<details><summary>嵌入代码与接入标识</summary><pre class="code">${E(code())}</pre><div class="code">${E(c.public_key)}</div><button type="button" id="rotate-platform-key">重新生成接入标识</button>${c.type === "sdk" ? '<p><a href="/fastcat_support_sdk.zip" download>下载 Flutter SDK 与示例</a></p>' : `<p><a href="/embed-demo.html?appKey=${c.public_key}" target="_blank" rel="noopener">打开实际嵌入演示 ↗</a></p>`}</details>` : '<p class="small">保存后即可复制接入代码；新平台默认停用。</p>'}</section>`,
+        )}</select></label></div>${input("客服入口图标 HTTPS 地址（选填）", "launcherIconUrl", w.launcherIconUrl.startsWith("data:") ? "" : w.launcherIconUrl)}<div class="field"><label>上传客服入口图标<input id="launcher-icon-file" type="file" accept="image/png,image/jpeg,image/webp"></label><button type="button" id="clear-launcher-icon">使用默认图标</button><span id="launcher-icon-status" class="small">${w.launcherIconUrl.startsWith("data:") ? "已上传图标" : ""}</span></div><p class="small">留空使用项目图标；建议使用正方形透明 PNG 或 WebP 图片。打开会话后显示关闭图标。</p>${input("Logo HTTPS 地址（选填）", "logoUrl", uploadedLogo ? "" : w.logoUrl)}<div class="field"><label>上传聊天窗口 Logo<input id="platform-logo-file" type="file" accept="image/png,image/jpeg,image/webp"></label><button type="button" id="clear-platform-logo">移除 Logo</button><span id="platform-logo-status" class="small">${uploadedLogo ? "已上传 Logo" : ""}</span></div><div class="field"><label>悬浮位置<select name="position">${["bottom-right", "bottom-left", "top-right", "top-left"].map((v, i) => `<option value="${v}" ${v === w.position ? "selected" : ""}>${["右下角", "左下角", "右上角", "左上角"][i]}</option>`).join("")}</select></label></div><div class="field"><label>欢迎语（选填）<textarea name="welcomeMessage" rows="3" maxlength="3000">${E(w.welcomeMessage)}</textarea></label></div><p class="small">主题色使用后台配置；语言和明暗模式可跟随网页或客户端。Logo 与位置用于网页组件。</p><iframe id="widget-design-preview" title="聊天组件实时预览" src="/widget?preview=1" sandbox="allow-scripts allow-same-origin allow-forms"></iframe></section><section data-platform-section="integration">${existing ? `<details><summary>嵌入代码与接入标识</summary><pre class="code">${E(code())}</pre><button type="button" id="copy-platform-code">复制接入代码</button><div class="row"><input type="password" id="platform-key-display" value="${E(c.public_key)}" readonly aria-label="接入标识"><button type="button" id="toggle-platform-key">显示</button></div><button type="button" id="copy-platform-key">复制接入标识</button><button type="button" id="rotate-platform-key">重新生成接入标识</button>${c.type === "sdk" ? '<p><a href="/fastcat_support_sdk.zip" download>下载 Flutter SDK 与示例</a></p>' : `<p><a href="/embed-demo.html?appKey=${c.public_key}" target="_blank" rel="noopener">打开实际嵌入演示 ↗</a></p><button type="button" id="download-platform-example">下载 HTML 接入示例</button>`}</details>` : '<p class="small">保存后即可复制接入代码；新平台默认停用。</p>'}</section>`,
       "保存",
       async (f) => {
         const payload = {
@@ -211,7 +258,7 @@ export function createAccessUI({ api, E, modal, toast }) {
             theme: f.theme,
             position: f.position,
             welcomeMessage: f.welcomeMessage,
-            logoUrl: f.logoUrl,
+            logoUrl: f.logoUrl.trim() || uploadedLogo,
             launcherIconUrl: f.launcherIconUrl.trim() || uploadedIcon,
             allowLocalFilePreview: !!f.allowLocalFilePreview,
           },
@@ -228,8 +275,48 @@ export function createAccessUI({ api, E, modal, toast }) {
           },
         );
         selected = saved.id || c.id || null;
+        setPlatformRoute(selected);
         toast("平台已保存");
         await render();
+      },
+    );
+    for (const [id, value] of [
+      ["copy-platform-code", code()],
+      ["copy-platform-key", c.public_key],
+    ]) {
+      o.querySelector("#" + id)?.addEventListener(
+        "click",
+        safe(async () => {
+          if (!navigator.clipboard?.writeText)
+            throw Error("当前浏览器无法自动复制，请手动选择并复制。");
+          await navigator.clipboard.writeText(value);
+          toast("已复制");
+        }),
+      );
+    }
+    o.querySelector("#toggle-platform-key")?.addEventListener(
+      "click",
+      (event) => {
+        const input = o.querySelector("#platform-key-display");
+        input.type = input.type === "password" ? "text" : "password";
+        event.currentTarget.textContent =
+          input.type === "password" ? "显示" : "隐藏";
+      },
+    );
+    o.querySelector("#download-platform-example")?.addEventListener(
+      "click",
+      () => {
+        const html = `<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>客服接入示例</title></head><body><h1>客服接入示例</h1><p>点击客服入口开始咨询。</p>\n${code()}\n</body></html>\n`;
+        const url = URL.createObjectURL(
+          new Blob([html], { type: "text/html;charset=utf-8" }),
+        );
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "fastcat-embed-example.html";
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
       },
     );
     const iconFile = o.querySelector("#launcher-icon-file"),
@@ -244,6 +331,7 @@ export function createAccessUI({ api, E, modal, toast }) {
       iconURL.value = "";
       iconFile.value = "";
       iconStatus.textContent = "";
+      update();
     };
     iconFile.onchange = async () => {
       const file = iconFile.files[0];
@@ -277,6 +365,7 @@ export function createAccessUI({ api, E, modal, toast }) {
         uploadedIcon = canvas.toDataURL("image/webp", 0.85);
         iconURL.value = "";
         iconStatus.textContent = "已上传图标";
+        update();
       } catch (error) {
         iconFile.value = "";
         toast(error.message);
@@ -284,25 +373,132 @@ export function createAccessUI({ api, E, modal, toast }) {
         submit.disabled = false;
       }
     };
-    o.querySelectorAll("details").forEach((d) => (d.open = true));
+    const logoInput = o.querySelector('[name="logoUrl"]');
+    const logoFile = o.querySelector("#platform-logo-file");
+    const logoStatus = o.querySelector("#platform-logo-status");
+    logoInput.addEventListener("input", () => {
+      uploadedLogo = "";
+      logoStatus.textContent = "";
+    });
+    o.querySelector("#clear-platform-logo").onclick = () => {
+      uploadedLogo = "";
+      logoInput.value = "";
+      logoFile.value = "";
+      logoStatus.textContent = "";
+      update();
+    };
+    logoFile.onchange = async () => {
+      const file = logoFile.files[0];
+      if (!file) return;
+      const submit = o.querySelector("button[type=submit]");
+      submit.disabled = true;
+      try {
+        if (
+          file.size > 5 * 1024 * 1024 ||
+          !["image/png", "image/jpeg", "image/webp"].includes(file.type)
+        )
+          throw Error("请选择 5 MB 以内的 PNG、JPEG 或 WebP 图片");
+        const image = await createImageBitmap(file),
+          canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 192;
+        const side = Math.min(image.width, image.height);
+        canvas
+          .getContext("2d")
+          .drawImage(
+            image,
+            (image.width - side) / 2,
+            (image.height - side) / 2,
+            side,
+            side,
+            0,
+            0,
+            192,
+            192,
+          );
+        image.close();
+        uploadedLogo = canvas.toDataURL("image/webp", 0.85);
+        logoInput.value = "";
+        logoStatus.textContent = "已上传 Logo";
+        update();
+      } catch (error) {
+        logoFile.value = "";
+        toast(error.message);
+      } finally {
+        submit.disabled = false;
+      }
+    };
+    const integrationDetails = o.querySelector(
+      '[data-platform-section="integration"] details',
+    );
+    if (integrationDetails) integrationDetails.open = true;
     const update = () => {
       const form = o.querySelector("form"),
         mode = form.elements.ai_mode.value;
       o.querySelector("[data-assist]").hidden = mode !== "assist";
       const isWeb = (form.elements.type?.value || c.type) === "web";
       o.querySelector("[data-local-preview]").hidden = !isWeb;
+      o.querySelector(".platform-launcher-preview").hidden = !isWeb;
       form.elements.allowLocalFilePreview.disabled = !isWeb;
       const preview = o.querySelector("#widget-design-preview");
-      preview.querySelector("header").style.background =
-        form.elements.themeColor.value;
       form.elements.themeColor.parentElement.querySelector(
         "output",
       ).textContent = form.elements.themeColor.value.toUpperCase();
-      preview.querySelector("[data-preview-title]").textContent =
-        form.elements.title.value;
-      preview.querySelector("[data-preview-welcome]").textContent =
-        form.elements.welcomeMessage.value || "欢迎语人工接待（默认）";
+      const logoURL = form.elements.logoUrl.value.trim() || uploadedLogo;
+      preview.contentWindow?.postMessage(
+        {
+          type: "fastcat:preview-config",
+          config: {
+            title: form.elements.title.value,
+            themeColor: form.elements.themeColor.value,
+            welcomeMessage: form.elements.welcomeMessage.value,
+            logoUrl: logoURL,
+            language: form.elements.language.value,
+            theme: form.elements.theme.value,
+            hostLanguage: document.documentElement.lang,
+            hostTheme: document.documentElement.dataset.theme,
+          },
+        },
+        location.origin,
+      );
+      const launcher = o.querySelector("[data-preview-launcher]");
+      const icon = iconURL.value.trim() || uploadedIcon;
+      launcher.replaceChildren();
+      if (/^(https:\/\/|data:image\/(?:png|jpeg|webp);base64,)/i.test(icon)) {
+        const image = document.createElement("img");
+        image.alt = "";
+        image.referrerPolicy = "no-referrer";
+        image.onerror = () => {
+          launcher.textContent = "F";
+        };
+        image.src = icon;
+        launcher.append(image);
+      } else launcher.textContent = "F";
+      launcher.style.background = form.elements.themeColor.value;
+      const rgb = [1, 3, 5]
+        .map(
+          (index) =>
+            parseInt(
+              form.elements.themeColor.value.slice(index, index + 2),
+              16,
+            ) / 255,
+        )
+        .map((value) =>
+          value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4,
+        );
+      launcher.style.color =
+        0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 0.179
+          ? "#000"
+          : "#fff";
+      o.querySelector("[data-preview-position]").textContent =
+        "网页入口位置：" +
+        ({
+          "bottom-right": "右下角",
+          "bottom-left": "左下角",
+          "top-right": "右上角",
+          "top-left": "左上角",
+        }[form.elements.position.value] || "右下角");
     };
+    o.querySelector("#widget-design-preview").addEventListener("load", update);
     o.querySelector("form").addEventListener("input", update);
     update();
     const rotate = o.querySelector("#rotate-platform-key");
@@ -333,7 +529,7 @@ export function createAccessUI({ api, E, modal, toast }) {
       return;
     const o = platformForm(
       "Telegram 客服话题配置",
-      `<p class="small">将 Bot 加入启用话题的超级群组，并设为具有管理话题权限的管理员。客服需绑定个人 Telegram 数字 ID；匿名管理员消息不支持。客服权限与工作台一致。</p><label><input name="enabled" type="checkbox" ${c.enabled ? "checked" : ""}> 启用人工话题转发</label>${input("Bot Token（留空保留，服务端加密）", "botToken", "", "password")}${input("或密钥环境变量（FC_SECRET_ 前缀）", "tokenEnv", c.tokenEnv)}${input("目标超级群组 ID", "chatId", c.chatId)}${input("服务公网 HTTPS 地址", "publicBaseUrl", c.publicBaseUrl)}${input("首次带入最近消息数（0 表示仅最近一条）", "contextMessages", c.contextMessages, "number")}<h3>客服身份绑定</h3><div id="tg-operators"></div><button type="button" id="tg-add">＋ 绑定客服</button><p class="small">只将已绑定的客服话题回复传给用户。内部备注不转发，已结束会话不接收回复。</p><div class="row"><button type="button" id="tg-status">消息与话题</button><button type="button" id="tg-test">检测已保存连接</button><button type="button" id="tg-webhook">注册已保存回调</button></div><p class="small">首次配置或更换 Bot / 群组后，保存并注册回调。Token ${c.tokenConfigured ? "已配置" : "未配置"}。</p>`,
+      `<section data-platform-section="basic"><p class="small">将 Bot 加入启用话题的超级群组，并设为具有管理话题权限的管理员。客服需绑定个人 Telegram 数字 ID；匿名管理员消息不支持。客服权限与工作台一致。</p><label><input name="enabled" type="checkbox" ${c.enabled ? "checked" : ""}> 启用人工话题转发</label>${input("Bot Token（留空保留，服务端加密）", "botToken", "", "password")}${input("或密钥环境变量（FC_SECRET_ 前缀）", "tokenEnv", c.tokenEnv)}${input("目标超级群组 ID", "chatId", c.chatId)}${input("服务公网 HTTPS 地址", "publicBaseUrl", c.publicBaseUrl)}${input("首次带入最近消息数（0 表示仅最近一条）", "contextMessages", c.contextMessages, "number")}</section><section data-platform-section="operators"><h3>客服身份绑定</h3><div id="tg-operators"></div><button type="button" id="tg-add">＋ 绑定客服</button><p class="small">只将已绑定的客服话题回复传给用户。内部备注不转发，已结束会话不接收回复。</p></section><section data-platform-section="diagnostics"><div class="row"><button type="button" id="tg-status">消息与话题</button><button type="button" id="tg-test">检测已保存连接</button><button type="button" id="tg-webhook">注册已保存回调</button></div><p class="small">首次配置或更换 Bot / 群组后，保存并注册回调。Token ${c.tokenConfigured ? "已配置" : "未配置"}。</p></section>`,
       "保存",
       async (f) => {
         const operators = [...o.querySelectorAll("[data-operator]")].map(
@@ -360,6 +556,16 @@ export function createAccessUI({ api, E, modal, toast }) {
         await render();
       },
     );
+    const connectionState = document.createElement("p");
+    connectionState.className = "small";
+    connectionState.setAttribute("role", "status");
+    connectionState.textContent =
+      telegramCheck?.revision === c.revision
+        ? telegramCheck.message
+        : c.tokenConfigured && c.chatId
+          ? "已配置，尚未检测连接"
+          : "待配置 Bot 和群组";
+    o.querySelector("#tg-test").closest(".row").after(connectionState);
     o.querySelector("#tg-status").onclick = safe(status);
     const add = (value = {}) => {
       const row = document.createElement("div");
@@ -376,8 +582,34 @@ export function createAccessUI({ api, E, modal, toast }) {
       ["tg-webhook", "webhook"],
     ])
       o.querySelector("#" + id).onclick = safe(async () => {
-        await api("/access/telegram/" + path, { method: "POST" });
-        toast(path === "test" ? "群组与机器人权限正常" : "回调注册成功");
+        try {
+          await api("/access/telegram/" + path, { method: "POST" });
+          if (path === "test") {
+            telegramCheck = {
+              revision: c.revision,
+              message: "最近一次检测：群组与机器人权限正常",
+            };
+            connectionState.textContent = telegramCheck.message;
+            const label = document.querySelector("[data-tg-state]");
+            if (label)
+              label.textContent =
+                (c.enabled ? "已启用 · " : "未启用 · ") + telegramCheck.message;
+          }
+          toast(path === "test" ? "群组与机器人权限正常" : "回调注册成功");
+        } catch (error) {
+          if (path === "test") {
+            telegramCheck = {
+              revision: c.revision,
+              message: "最近一次检测失败：" + error.message,
+            };
+            connectionState.textContent = telegramCheck.message;
+            const label = document.querySelector("[data-tg-state]");
+            if (label)
+              label.textContent =
+                (c.enabled ? "已启用 · " : "未启用 · ") + telegramCheck.message;
+          }
+          throw error;
+        }
       });
   }
   async function status() {

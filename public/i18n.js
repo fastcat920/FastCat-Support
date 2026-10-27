@@ -589,7 +589,7 @@ export const english = {
   "AI 接待策略": "AI reception policy",
   "人工回复、转交和主动接管会停止 AI；工作时间沿用团队管理设置，会话由客服手动分配。修改接待策略会终止该平台正在生成的 AI 回复。":
     "Staff replies, transfers and takeover stop AI. Working hours follow Team settings. Human handoffs are assigned to online staff with capacity. Policy changes cancel active AI replies.",
-  "欢迎语（留空人工接待（默认））": "Welcome message (optional)",
+  "欢迎语（选填）": "Welcome message (optional)",
   "你好，我想咨询一个问题": "Hi, I have a question",
   客服会在这里回复你: "Support will reply here",
   "输入你的问题…": "Type your question…",

@@ -822,6 +822,59 @@ p {
   gap: 20px;
   align-items: start;
 }
+.knowledge-source-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+.knowledge-index-summary {
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  overflow-wrap: anywhere;
+}
+.knowledge-detail-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.agent-card-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0;
+}
+.agent-card-summary span {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.knowledge-source-tabs button {
+  flex: none;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 10px 14px;
+}
+.knowledge-source-tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--brand);
+  font-weight: 600;
+}
+.knowledge-source-tabs button span {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .collection-panel {
   padding: 17px 10px;
   background: var(--surface);
@@ -1804,8 +1857,54 @@ p {
   border-radius: 7px;
 }
 .inbox-v3 {
-  grid-template-columns: 330px minmax(340px, 1fr) 250px;
+  grid-template-columns: 330px minmax(340px, 1fr) var(
+      --visitor-panel-width,
+      320px
+    );
   overflow: hidden;
+}
+.visitor-panel-toolbar {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.visitor-panel-toolbar details {
+  color: var(--muted);
+  font-size: 12px;
+}
+.visitor-panel-toolbar summary {
+  cursor: pointer;
+}
+.visitor-panel-toolbar label {
+  display: block;
+  margin-top: 8px;
+}
+.visitor-panel-toolbar input {
+  max-width: 130px;
+}
+.visitor-history-button {
+  width: 100%;
+  margin-top: 12px;
+}
+.chat-list-context {
+  flex: none;
+  margin: 0;
+  padding: 8px 20px;
+  background: var(--brand-soft);
+  color: var(--text);
+}
+.visitor-history-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+.visitor-history-list button {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 .inbox-v3 .conversation-list {
   display: flex;
@@ -2996,6 +3095,33 @@ p {
   object-fit: contain;
   border-radius: 8px;
 }
+.message-day {
+  align-self: center;
+  margin: 14px auto;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.agent-detail-list {
+  margin: 18px 0;
+}
+.agent-detail-list > div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.agent-detail-list dt {
+  color: var(--muted);
+}
+.agent-detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 .message-image-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
@@ -3239,7 +3365,25 @@ label:has(> input:is([type="checkbox"], [type="radio"])) {
   margin: 0 0 8px;
   font-size: 14px;
 }
+.platform-live-preview {
+  margin-top: 18px;
+}
+.platform-live-preview summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.platform-live-preview iframe {
+  display: block;
+  width: 100%;
+  height: 480px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
 #widget-design-preview {
+  display: block;
+  width: 100%;
+  height: 520px;
   border: 1px solid var(--line);
   border-radius: 14px;
   overflow: hidden;
@@ -3249,6 +3393,37 @@ label:has(> input:is([type="checkbox"], [type="radio"])) {
 #widget-design-preview header {
   padding: 20px;
   color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#widget-design-preview header img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.platform-launcher-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.platform-launcher-preview [data-preview-launcher] {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: white;
+  font-weight: 700;
+}
+.platform-launcher-preview img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
 }
 .platform-preview-messages {
   min-height: 220px;

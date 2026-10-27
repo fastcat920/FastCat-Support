@@ -1,7 +1,37 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { migrateManagement } from "../lib/management.mjs";
+import { migrateManagement, listConversations } from "../lib/management.mjs";
+
+test("waiting for human assignment excludes ordinary, assigned and closed conversations", () => {
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec(`CREATE TABLE users(id TEXT, name TEXT);
+      CREATE TABLE visitors(id TEXT, name TEXT, email TEXT);
+      CREATE TABLE conversations(id TEXT, visitor_id TEXT, status TEXT, assignee TEXT, priority TEXT, updated TEXT, subject TEXT, handoff_pending INTEGER);
+      CREATE TABLE messages(conversation_id TEXT, role TEXT, body TEXT, created TEXT, read_at TEXT);
+      INSERT INTO visitors VALUES ('v','访客','v@example.test');
+      INSERT INTO users VALUES ('other','其他客服');
+      INSERT INTO conversations VALUES ('waiting','v','open','','normal','2026-01-01','等待',1),
+        ('ordinary','v','open','','normal','2026-01-01','普通',0),
+        ('assigned','v','open','other','normal','2026-01-01','已分配',1),
+        ('closed','v','closed','','normal','2026-01-01','已结束',1);`);
+    const params = new URLSearchParams({ handoffPending: "1", paged: "1" });
+    const result = listConversations(
+      db,
+      { id: "agent", role: "agent" },
+      params,
+    );
+    assert.deepEqual(
+      result.items.map((item) => item.id),
+      ["waiting"],
+    );
+    assert.equal(result.total, 1);
+    assert.equal(result.counts.all, 1);
+  } finally {
+    db.close();
+  }
+});
 test("management migration preserves existing admin, conversation and legacy message across repeated startup", () => {
   const db = new DatabaseSync(":memory:");
   try {

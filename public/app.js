@@ -13,10 +13,11 @@ import { iconMarkup } from "./icons.js";
 import { createFeatureUI } from "./features.js";
 const app = document.querySelector("#app");
 let me,
-  page = location.hash.slice(1) || "inbox",
+  page = location.hash.slice(1).split("/")[0] || "inbox",
   query = "",
   resources = [],
   events;
+let agentRefs = { collections: [], workflows: [], tools: [] };
 const drafts = new Map();
 const E = (s) =>
   String(s ?? "").replace(
@@ -293,7 +294,8 @@ function auth(setup) {
         method: "POST",
         body: JSON.stringify(values),
       });
-      location.hash = "inbox";
+      if (!titles[location.hash.slice(1).split("/")[0]])
+        location.hash = "inbox";
       boot();
     } catch (err) {
       document.querySelector("#auth-error").textContent = err.message;
@@ -405,7 +407,7 @@ function navigate(p) {
   if (page === p) render();
 }
 window.onhashchange = () => {
-  page = location.hash.slice(1) || "inbox";
+  page = location.hash.slice(1).split("/")[0] || "inbox";
   if (me) render();
 };
 async function render() {
@@ -501,6 +503,20 @@ async function resourcePage() {
   const kind = page;
   resources = await api("/resources?kind=" + kind);
   if (kind !== page) return;
+  if (kind === "agent") {
+    const refs = await Promise.allSettled([
+      api("/knowledge/collections"),
+      api("/resources?kind=workflow"),
+      api("/resources?kind=tool"),
+    ]);
+    if (kind !== page) return;
+    agentRefs = Object.fromEntries(
+      ["collections", "workflows", "tools"].map((key, i) => [
+        key,
+        refs[i].status === "fulfilled" ? refs[i].value : [],
+      ]),
+    );
+  }
   const [title, desc, button] = details[kind],
     v = document.querySelector("#view");
   v.innerHTML = `<div class="content">${heading(title, desc, `<button class="primary" id="create">＋ ${button}</button>`)}${["workflow", "tool", "model"].includes(kind) ? '<div class="notice">模型目录用于记录服务与模型标识。实际模型连接和密钥由服务器环境变量配置。</div>' : kind === "agent" ? '<div class="notice">支持服务指令、多知识库、授权工具自动调用和可选角色协作。可选择模型供应商或使用工作空间默认连接；调试结果由人工确认发送。</div>' : ""}${kind === "channel" ? `<section class="panel" style="margin-bottom:24px"><div class="panel-head"><div><h2>网站客服组件</h2><p class="small">可用 · 访客发送消息，客服工作台实时接收</p></div><button id="widget-preview">打开预览 ↗</button></div><label>嵌入代码（同源网站）</label><div class="code">${E('<iframe src="' + location.origin + '/widget" title="在线客服" width="430" height="730"></iframe>')}</div><p class="small">其他域名嵌入需要单独配置访问策略。外部渠道仅保存配置，尚未接入。</p></section>` : ""}<div class="toolbar"><input id="search" aria-label="搜索" placeholder="搜索${titles[kind]}…" value="${E(query)}"><div class="row">${kind === "knowledge" ? '<button id="knowledge-search">检索测试</button><button id="import-knowledge">导入文本</button>' : ""}<span class="small">共 ${resources.length} 项</span></div></div><div id="resource-list"></div></div>`;
@@ -526,8 +542,33 @@ function resourceList(kind) {
   const rows = resources.filter((r) =>
     (r.name + r.description).toLowerCase().includes(query.toLowerCase()),
   );
+  const resourceTags = (config = {}) => {
+    const tags = [];
+    for (const id of config.collectionIds ||
+      (config.collectionId ? [config.collectionId] : []))
+      tags.push(
+        "知识库：" +
+          (agentRefs.collections.find((item) => item.id === id)?.name ||
+            "关联资源"),
+      );
+    for (const id of config.workflowIds || [])
+      tags.push(
+        "工作流：" +
+          (agentRefs.workflows.find((item) => item.id === id)?.name ||
+            "关联资源"),
+      );
+    for (const binding of config.toolBindings || [])
+      tags.push(
+        "工具：" +
+          (agentRefs.tools.find((item) => item.id === binding.resourceId)
+            ?.name || "关联资源") +
+          " / " +
+          binding.name,
+      );
+    return tags.map((tag) => `<span>${E(tag)}</span>`).join("");
+  };
   document.querySelector("#resource-list").innerHTML = rows.length
-    ? `<div class="grid resource-grid">${rows.map((r) => `<article class="card resource-card"><div class="row resource-card-head"><div class="avatar">${icons[kind]}</div><span class="badge">${kind === "knowledge" ? "知识条目" : kind === "agent" ? "智能体" : kind === "model" ? "模型" : "已保存"}</span><button class="quiet danger" data-delete="${r.id}" style="margin-left:auto" aria-label="删除 ${E(r.name)}">×</button></div><h3>${E(r.name)}</h3><p>${E(r.description.slice(0, 150) || "暂无描述")}</p><div class="small resource-card-meta">${new Date(r.created).toLocaleDateString("zh-CN")} 创建${kind === "agent" && r.config?.collaboration?.enabled ? " · 已启用协作" : ""}</div><div class="row resource-card-actions"><button data-view="${r.id}">查看详情</button><button data-edit="${r.id}">编辑</button>${kind === "agent" ? `<button data-debug="${r.id}" class="primary">调试</button>` : ""}</div></article>`).join("")}</div>`
+    ? `<div class="grid resource-grid">${rows.map((r) => `<article class="card resource-card"><div class="row resource-card-head"><div class="avatar">${icons[kind]}</div><span class="badge">${kind === "knowledge" ? "知识条目" : kind === "agent" ? "智能体" : kind === "model" ? "模型" : "已保存"}</span><button class="quiet danger" data-delete="${r.id}" style="margin-left:auto" aria-label="删除 ${E(r.name)}">×</button></div><h3>${E(r.name)}</h3><p>${E(r.description.slice(0, 150) || "暂无描述")}</p>${kind === "agent" ? `<div class="agent-card-summary"><span>${E(r.config?.profession || "AI 助手")}</span><span>${E(r.config?.model || "工作空间默认模型")}</span><span>工具 ${(r.config?.toolBindings || []).length} · 工作流 ${(r.config?.workflowIds || []).length}</span>${resourceTags(r.config)}</div>` : ""}<div class="small resource-card-meta">${new Date(r.created).toLocaleDateString("zh-CN")} 创建${kind === "agent" && r.config?.collaboration?.enabled ? " · 已启用协作" : ""}</div><div class="row resource-card-actions"><button data-view="${r.id}">查看详情</button><button data-edit="${r.id}">编辑</button>${kind === "agent" ? `<button data-copy-agent="${r.id}">复制</button><button data-debug="${r.id}" class="primary">调试</button>` : ""}</div></article>`).join("")}</div>`
     : empty(
         icons[kind],
         query ? "没有匹配结果" : `还没有${titles[kind]}`,
@@ -543,6 +584,13 @@ function resourceList(kind) {
           resources.find((x) => x.id === b.dataset.edit),
         )),
   );
+  document.querySelectorAll("[data-copy-agent]").forEach((button) => {
+    button.onclick = () =>
+      createAgentEditor({ api, E, modal, toast, onSaved: resourcePage })(
+        resources.find((r) => r.id === button.dataset.copyAgent),
+        { duplicate: true },
+      );
+  });
   document
     .querySelectorAll("[data-debug]")
     .forEach((b) => (b.onclick = () => aiDebug(b.dataset.debug)));
@@ -553,9 +601,13 @@ function resourceList(kind) {
     (b) =>
       (b.onclick = () => {
         const r = resources.find((x) => x.id === b.dataset.view);
+        const agentDetails =
+          kind === "agent"
+            ? `<dl class="agent-detail-list"><div><dt>职业 / 角色</dt><dd>${E(r.config?.profession || "未设置")}</dd></div><div><dt>对话模型</dt><dd>${E(r.config?.model || "工作空间默认")}</dd></div><div><dt>知识范围</dt><dd>${E({ none: "不使用知识库", selected: "所选知识库", all: "全部知识库" }[r.config?.knowledgeScope] || "旧版配置")}</dd></div><div><dt>工具操作</dt><dd>${(r.config?.toolBindings || []).length} 项</dd></div><div><dt>工作流</dt><dd>${(r.config?.workflowIds || []).length} 项</dd></div></dl><details><summary>查看完整配置</summary><div class="code">${E(JSON.stringify(r.config, null, 2))}</div></details>`
+            : `<div class="code">${E(JSON.stringify(r.config, null, 2))}</div>`;
         modal(
           r.name,
-          `<p style="white-space:pre-wrap;overflow-wrap:anywhere">${E(r.description)}</p><div class="code">${E(JSON.stringify(r.config, null, 2))}</div>`,
+          `<p style="white-space:pre-wrap;overflow-wrap:anywhere">${E(r.description)}</p>${agentDetails}`,
           "关闭",
         );
       }),

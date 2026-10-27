@@ -14,7 +14,15 @@ export function createFeatureUI({
   isActive,
   isAdmin = () => true,
 }) {
-  const retrievalUI = createRetrievalUI({ api, E, modal, toast, isAdmin });
+  let refreshRetrievalStatus = () => {};
+  const retrievalUI = createRetrievalUI({
+    api,
+    E,
+    modal,
+    toast,
+    isAdmin,
+    onChange: () => refreshRetrievalStatus(),
+  });
   const knowledgeJobsUI = createKnowledgeJobsUI({
     api,
     E,
@@ -23,7 +31,13 @@ export function createFeatureUI({
     refresh: () => render("knowledge"),
     isAvailable: () => isAdmin() && isActive("knowledge"),
   });
-  const state = { collection: "default", query: "", epoch: 0 };
+  const state = {
+    collection: "default",
+    query: "",
+    source: "all",
+    category: "",
+    epoch: 0,
+  };
   const labels = {
     start: "开始",
     text: "文本处理",
@@ -101,13 +115,29 @@ export function createFeatureUI({
     return toolPage(rows);
   }
   async function knowledgePage(rows, epoch) {
+    const route = location.hash.match(
+      /^#knowledge\/([^/]+)\/(all|document|qa|website)$/,
+    );
+    if (route) {
+      try {
+        state.collection = decodeURIComponent(route[1]);
+        state.source = route[2];
+      } catch {
+        state.collection = "default";
+        state.source = "all";
+      }
+    }
     const collections = await api("/knowledge/collections");
     if (!isActive("knowledge") || epoch !== state.epoch) return;
     if (!collections.some((c) => c.id === state.collection))
       state.collection = "default";
     const selected = collections.find((c) => c.id === state.collection);
+    const setKnowledgeRoute = () => {
+      const hash = `#knowledge/${encodeURIComponent(state.collection)}/${state.source}`;
+      if (location.hash !== hash) history.pushState(null, "", hash);
+    };
     document.querySelector("#view").innerHTML =
-      `<div class="content feature-content">${heading("知识库", "整理业务知识，让每次回答有据可依。", '<button class="primary" id="new-document">＋ 添加知识</button>')}<div class="knowledge-layout"><aside class="collection-panel"><div class="panel-head"><span class="section-label">知识库</span><button class="quiet" id="new-collection" aria-label="创建知识库">＋</button></div>${collections.map((c) => `<button class="collection-item ${c.id === state.collection ? "active" : ""}" data-collection="${c.id}"><span class="icon">▧</span><span>${E(c.name)}</span><span class="count">${c.documentCount}</span></button>`).join("")}<div class="collection-help small">知识分块后自动建立检索索引。可在智能体中绑定指定知识库。</div></aside><section class="panel knowledge-main"><div class="panel-head"><div><h2>${E(selected.name)}</h2><p class="small">${E(selected.description || "")} · ${selected.chunkCount} 个分块</p></div><div class="row"><button id="retrieval-test">检索测试</button>${isAdmin() ? '<button id="retrieval-config">检索配置</button><button id="embedding-jobs">向量索引</button><button id="website-sources">网站采集与同步</button>' : ""}${state.collection !== "default" ? '<button class="quiet danger" id="delete-collection">删除知识库</button>' : ""}</div></div><div class="toolbar"><input id="knowledge-filter" aria-label="搜索知识" placeholder="搜索文档名称或内容…" value="${E(state.query)}"><span class="small">${selected.documentCount} 个知识来源</span></div><div id="knowledge-table"></div></section></div></div>`;
+      `<div class="content feature-content">${heading("知识库", "整理业务知识，让每次回答有据可依。", '<button class="primary" id="new-document">＋ 添加知识</button>')}<div class="knowledge-layout"><aside class="collection-panel"><div class="panel-head"><span class="section-label">知识库</span><button class="quiet" id="new-collection" aria-label="创建知识库">＋</button></div>${collections.map((c) => `<button class="collection-item ${c.id === state.collection ? "active" : ""}" data-collection="${c.id}"><span class="icon">▧</span><span>${E(c.name)}</span><span class="count">${c.documentCount}</span></button>`).join("")}<div class="collection-help small">知识分块后自动建立检索索引。可在智能体中绑定指定知识库。</div></aside><section class="panel knowledge-main"><div class="panel-head"><div><h2>${E(selected.name)}</h2><p class="small">${E(selected.description || "")} · ${selected.chunkCount} 个分块</p></div><div class="row"><button id="retrieval-test">检索测试</button>${isAdmin() ? '<button id="retrieval-config">检索配置</button><button id="embedding-jobs">向量索引</button><button id="website-sources">网站采集与同步</button>' : ""}${state.collection !== "default" ? '<button class="quiet danger" id="delete-collection">删除知识库</button>' : ""}</div></div><div class="toolbar"><input id="knowledge-filter" aria-label="搜索知识" placeholder="搜索知识名称或说明…" value="${E(state.query)}"><span class="small">${selected.documentCount} 个知识来源</span></div><div id="knowledge-table"></div></section></div></div>`;
     document.querySelector("#retrieval-config")?.addEventListener(
       "click",
       safe(() => retrievalUI.configure(selected)),
@@ -116,21 +146,135 @@ export function createFeatureUI({
       "click",
       safe(() => retrievalUI.jobs(selected)),
     );
+    const toolbar = document
+      .querySelector("#knowledge-filter")
+      .closest(".toolbar");
+    const indexSummary = document.createElement("div");
+    indexSummary.className = "knowledge-index-summary small";
+    indexSummary.setAttribute("role", "status");
+    indexSummary.textContent = "正在读取检索状态…";
+    toolbar.before(indexSummary);
+    const refreshIndex = document.createElement("button");
+    refreshIndex.type = "button";
+    refreshIndex.textContent = "刷新检索状态";
+    toolbar.before(refreshIndex);
+    let indexRevision = 0;
+    const loadIndexSummary = () => {
+      const requestRevision = ++indexRevision;
+      return api(
+        "/knowledge/retrieval/collections/" + encodeURIComponent(selected.id),
+      )
+        .then(({ config, jobs }) => {
+          if (
+            !isActive("knowledge") ||
+            epoch !== state.epoch ||
+            requestRevision !== indexRevision ||
+            !indexSummary.isConnected
+          )
+            return;
+          const mode =
+            { bm25: "关键词", semantic: "语义", hybrid: "混合" }[config.mode] ||
+            config.mode;
+          const active = jobs.find((job) =>
+            ["queued", "running"].includes(job.status),
+          );
+          indexSummary.textContent = `检索模式：${mode} · 有效向量：${config.indexed} / ${config.total} 个分块${active ? ` · 索引${active.status === "running" ? "进行中" : "等待执行"} ${active.done} / ${active.total}` : ""}${config.error ? ` · ${config.error}` : ""}`;
+        })
+        .catch(() => {
+          if (requestRevision === indexRevision && indexSummary.isConnected)
+            indexSummary.textContent = "暂时无法读取检索状态，请刷新重试。";
+        });
+    };
+    refreshIndex.onclick = loadIndexSummary;
+    refreshRetrievalStatus = loadIndexSummary;
+    loadIndexSummary();
+    if (isAdmin()) {
+      const importButton = document.createElement("button");
+      importButton.type = "button";
+      importButton.textContent = "批量导入问答";
+      importButton.onclick = () => importQuestions(selected);
+      toolbar.before(importButton);
+    }
+    const sourceTabs = document.createElement("nav");
+    sourceTabs.className = "knowledge-source-tabs";
+    sourceTabs.setAttribute("aria-label", "知识来源类型");
+    toolbar.before(sourceTabs);
+    const categoryFilter = document.createElement("select");
+    categoryFilter.setAttribute("aria-label", "问答分类");
+    toolbar.append(categoryFilter);
+    const sources = [
+      ["all", "全部"],
+      ["document", "文档"],
+      ["qa", "问答"],
+      ["website", "网站"],
+    ];
+    const sourceOf = (row) =>
+      row.config.source === "qa" || row.config.source === "website"
+        ? row.config.source
+        : "document";
     const draw = () => {
+      const inCollection = rows.filter(
+        (r) => (r.config.collectionId || "default") === state.collection,
+      );
+      const categories = [
+        ...new Set(
+          inCollection
+            .filter((r) => sourceOf(r) === "qa")
+            .map((r) => r.config.category || "")
+            .filter(Boolean),
+        ),
+      ].sort();
+      if (state.category && !categories.includes(state.category))
+        state.category = "";
+      categoryFilter.innerHTML =
+        '<option value="">全部分类</option>' +
+        categories
+          .map(
+            (category) =>
+              `<option value="${E(category)}">${E(category)}</option>`,
+          )
+          .join("");
+      categoryFilter.value = state.category;
+      categoryFilter.hidden = state.source !== "qa" || !categories.length;
+      sourceTabs.innerHTML = sources
+        .map(([key, label]) => {
+          const count =
+            key === "all"
+              ? inCollection.length
+              : inCollection.filter((r) => sourceOf(r) === key).length;
+          return `<button type="button" data-knowledge-source="${key}" class="${state.source === key ? "active" : ""}" aria-pressed="${state.source === key}">${label} <span>${count}</span></button>`;
+        })
+        .join("");
+      sourceTabs
+        .querySelectorAll("[data-knowledge-source]")
+        .forEach((button) => {
+          button.onclick = () => {
+            state.source = button.dataset.knowledgeSource;
+            state.category = "";
+            setKnowledgeRoute();
+            draw();
+          };
+        });
       const list = rows.filter(
         (r) =>
           (r.config.collectionId || "default") === state.collection &&
+          (state.source === "all" || sourceOf(r) === state.source) &&
+          (!state.category || r.config.category === state.category) &&
           (r.name + r.description)
             .toLowerCase()
             .includes(state.query.toLowerCase()),
       );
       document.querySelector("#knowledge-table").innerHTML = list.length
-        ? `<div class="table-scroll"><table class="table knowledge-table"><thead><tr><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr></thead><tbody>${list.map((r) => `<tr><td><strong>${E(r.name)}</strong><div class="small">${E(r.description.slice(0, 55))}${r.description.length > 55 ? "…" : ""}</div></td><td><span class="badge neutral">${r.config.source === "website" ? "网站" : r.config.source === "qa" ? "问答" : "文档"}</span></td><td><span class="status-dot">关键词已索引</span></td><td><div class="row">${r.config.source === "file" ? `<a class="file-source-link" href="/api/knowledge/files/${r.id}" download>原文件</a>` : ""}${r.config.sourceId ? '<span class="small">由采集来源维护</span>' : `${r.config.source === "website" ? `<button class="quiet" data-sync-source="${r.id}">同步</button>` : ""}<button class="quiet" data-edit="${r.id}">编辑</button><button class="quiet danger" data-delete="${r.id}" aria-label="删除 ${E(r.name)}">删除</button>`}</div></td></tr>`).join("")}</tbody></table></div>`
+        ? `<div class="table-scroll"><table class="table knowledge-table"><thead><tr><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr></thead><tbody>${list.map((r) => `<tr><td><strong>${E(r.name)}</strong><div class="small">${E(r.description.slice(0, 55))}${r.description.length > 55 ? "…" : ""}</div></td><td><span class="badge neutral">${r.config.source === "website" ? "网站" : r.config.source === "qa" ? "问答" : "文档"}</span></td><td><span class="status-dot">关键词已索引</span></td><td><div class="row"><button class="quiet" data-view-knowledge="${r.id}">查看详情</button>${r.config.source === "file" ? `<a class="file-source-link" href="/api/knowledge/files/${r.id}" download>原文件</a>` : ""}${r.config.sourceId ? '<span class="small">由采集来源维护</span>' : `${r.config.source === "website" ? `<button class="quiet" data-sync-source="${r.id}">同步</button>` : ""}<button class="quiet" data-edit="${r.id}">编辑</button><button class="quiet danger" data-delete="${r.id}" aria-label="删除 ${E(r.name)}">删除</button>`}</div></td></tr>`).join("")}</tbody></table></div>`
         : noData(
-            "还没有知识内容",
-            isAdmin()
-              ? "添加文档、问答或网站内容，开始构建你的知识库。"
-              : "请联系管理员添加知识内容。",
+            state.query || state.source !== "all"
+              ? "没有匹配的知识"
+              : "还没有知识内容",
+            state.query || state.source !== "all"
+              ? "试试其他关键词或切换来源类型。"
+              : isAdmin()
+                ? "添加文档、问答或网站内容，开始构建你的知识库。"
+                : "请联系管理员添加知识内容。",
           );
       if (!isAdmin())
         document
@@ -151,6 +295,13 @@ export function createFeatureUI({
             }
           })),
       );
+      document.querySelectorAll("[data-view-knowledge]").forEach((button) => {
+        button.onclick = () =>
+          knowledgeDetail(
+            rows.find((r) => r.id === button.dataset.viewKnowledge),
+            selected,
+          );
+      });
       document.querySelectorAll("[data-edit]").forEach(
         (b) =>
           (b.onclick = () =>
@@ -169,6 +320,10 @@ export function createFeatureUI({
       );
     };
     draw();
+    categoryFilter.onchange = () => {
+      state.category = categoryFilter.value;
+      draw();
+    };
     document.querySelector("#knowledge-filter").oninput = (e) => {
       state.query = e.target.value;
       draw();
@@ -178,6 +333,9 @@ export function createFeatureUI({
         (b.onclick = () => {
           state.collection = b.dataset.collection;
           state.query = "";
+          state.source = "all";
+          state.category = "";
+          setKnowledgeRoute();
           render("knowledge");
         }),
     );
@@ -192,6 +350,8 @@ export function createFeatureUI({
         async (b) => {
           const c = await post("/knowledge/collections", b);
           state.collection = c.id;
+          state.source = "all";
+          setKnowledgeRoute();
           await render("knowledge");
         },
       );
@@ -214,10 +374,60 @@ export function createFeatureUI({
               method: "DELETE",
             });
             state.collection = "default";
+            state.source = "all";
+            setKnowledgeRoute();
             render("knowledge");
           },
         ),
       );
+  }
+  function importQuestions(collection) {
+    modal(
+      "批量导入问答 · " + collection.name,
+      `<p class="small">每次最多 100 条；JSON 为对象数组，CSV 首行使用 question,answer,category。保存后建立关键词索引。</p><div class="field"><label>格式<select name="format"><option value="json">JSON</option><option value="csv">CSV</option></select></label></div><div class="field"><label>导入内容<textarea name="data" rows="12" required placeholder='[{"question":"问题","answer":"答案","category":"分类"}]'></textarea></label></div>`,
+      "导入",
+      async (values) => {
+        const result = await post("/knowledge/qa/import", {
+          collectionId: collection.id,
+          ...values,
+        });
+        state.source = "qa";
+        state.category = "";
+        history.pushState(
+          null,
+          "",
+          `#knowledge/${encodeURIComponent(collection.id)}/qa`,
+        );
+        toast(`已导入 ${result.count} 条问答`);
+        await render("knowledge");
+      },
+    );
+  }
+  function knowledgeDetail(item, collection) {
+    const source = item.config.source;
+    const title =
+      source === "qa"
+        ? "问答详情"
+        : source === "website"
+          ? "网站内容详情"
+          : "文档详情";
+    const content =
+      source === "qa"
+        ? `<p class="small">分类：${E(item.config.category || "未分类")}</p><h3>问题</h3><p class="knowledge-detail-text">${E(item.config.question || "")}</p><h3>答案</h3><p class="knowledge-detail-text">${E(item.config.answer || "")}</p>`
+        : `<h3>${source === "website" ? "采集正文" : "文档内容"}</h3><p class="knowledge-detail-text">${E(item.description || "暂无内容")}</p>`;
+    const url =
+      source === "website" && item.config.url
+        ? `<p class="small">来源地址：${E(item.config.url)}</p>`
+        : "";
+    const file =
+      source === "file"
+        ? `<p><a href="/api/knowledge/files/${encodeURIComponent(item.id)}" download>下载原文件</a></p>`
+        : "";
+    modal(
+      title + " · " + item.name,
+      `<p class="small">所属知识库：${E(collection.name)}${item.config.sourceId ? " · 由采集来源维护" : ""}</p>${url}${file}${content}`,
+      "关闭",
+    );
   }
   function documentDialog(collections, existing) {
     let type = existing?.config.source === "qa" ? "qa" : "text";
@@ -270,7 +480,11 @@ export function createFeatureUI({
             collectionId,
             source: type === "qa" ? "qa" : existing?.config.source || "text",
             ...(type === "qa"
-              ? { question: b.question, answer: b.answer }
+              ? {
+                  question: b.question,
+                  answer: b.answer,
+                  category: b.category || "",
+                }
               : {}),
           };
           const description =
@@ -294,7 +508,7 @@ export function createFeatureUI({
     const draw = () => {
       o.querySelector("#source-fields").innerHTML =
         type === "qa"
-          ? `${textField("question", "问题", existing?.config.question || "")}<div class="field"><label for="answer">答案</label><textarea id="answer" name="answer" required>${E(existing?.config.answer || "")}</textarea></div>`
+          ? `${textField("question", "问题", existing?.config.question || "")}${textField("category", "分类（选填）", existing?.config.category || "", "", false)}<div class="field"><label for="answer">答案</label><textarea id="answer" name="answer" required>${E(existing?.config.answer || "")}</textarea></div>`
           : type === "file"
             ? '<div class="field"><label for="document-file">PDF / DOCX / 文本文件</label><input type="file" id="document-file" accept=".pdf,.docx,.txt,.md" required><p class="small">不超过 8 MB、200,000 字符；PDF 最多 100 页，不支持扫描件 OCR。</p></div>'
             : type === "website"
