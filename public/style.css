@@ -2910,6 +2910,33 @@ p {
   max-width: 850px;
   width: min(850px, calc(100vw - 32px));
 }
+.resource-grid {
+  align-items: stretch;
+}
+.resource-card {
+  display: flex;
+  min-height: 220px;
+  flex-direction: column;
+}
+.resource-card-head {
+  min-height: 34px;
+}
+.resource-card h3 {
+  margin-bottom: 8px;
+}
+.resource-card p {
+  min-height: 42px;
+  color: var(--muted);
+}
+.resource-card-meta {
+  margin-top: auto;
+  padding-top: 12px;
+}
+.resource-card-actions {
+  gap: 7px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
 .agent-editor-section {
   border: 1px solid var(--line);
   border-radius: 12px;
