@@ -39,7 +39,12 @@ async function accept(token, name) {
   assert.equal(r.status, 201);
 }
 async function visitor(name) {
-  const r = await call("/widget/start", "POST", { name }, "");
+  const r = await call(
+    "/widget/start",
+    "POST",
+    { email: Buffer.from(name).toString("hex") + "@example.test" },
+    "",
+  );
   return r.data;
 }
 before(async () => {
@@ -208,7 +213,7 @@ test("assignment scopes reads, replies, search, visitors, AI and bulk actions", 
     403,
   );
   const visitorId = (await call("/visitors")).data.find(
-    (v) => v.name === "访客甲",
+    (v) => v.name === Buffer.from("访客甲").toString("hex") + "@example.test",
   ).id;
   assert.equal(
     (
@@ -281,33 +286,29 @@ test("assignment scopes reads, replies, search, visitors, AI and bulk actions", 
     403,
   );
 });
-test("tags, priority, filters, pagination, atomic bulk, CSV and audit are usable", async () => {
-  const tag = (await call("/tags", "POST", { name: "售后", color: "amber" }))
-    .data.id;
+test("priority, filters, pagination, atomic bulk, CSV and audit are usable", async () => {
+  assert.equal((await call("/tags", "GET")).status, 404);
   const a = await visitor("=SUM(1+1)"),
     b = await visitor("普通访客");
   assert.equal(
     (
       await call("/conversations/bulk", "POST", {
         ids: [a.id, b.id],
-        changes: { priority: "urgent", status: "pending", tagIds: [tag] },
+        changes: { priority: "urgent", status: "pending" },
       })
     ).data.count,
     2,
   );
   const listed = (
-    await call(
-      "/conversations?paged=1&status=pending&priority=urgent&tag=" +
-        tag +
-        "&limit=1",
-    )
+    await call("/conversations?paged=1&status=pending&priority=urgent&limit=1")
   ).data;
   assert.equal(listed.total, 2);
   assert.equal(listed.items.length, 1);
   assert.equal(listed.counts.pending, 2);
-  assert.equal(listed.items[0].tags[0].name, "售后");
   const second = (
-    await call("/conversations?paged=1&tag=" + tag + "&limit=1&offset=1")
+    await call(
+      "/conversations?paged=1&status=pending&priority=urgent&limit=1&offset=1",
+    )
   ).data;
   assert.notEqual(second.items[0].id, listed.items[0].id);
   assert.equal(
@@ -323,7 +324,10 @@ test("tags, priority, filters, pagination, atomic bulk, CSV and audit are usable
     (await call("/conversations/" + a.id)).data.conversation.priority,
     "urgent",
   );
-  const exported = (await call("/conversations/export?tag=" + tag)).data;
+  await call("/conversations/" + a.id, "PATCH", { subject: "=SUM(1+1)" });
+  const exported = (
+    await call("/conversations/export?status=pending&priority=urgent")
+  ).data;
   assert.equal(exported.total, 2);
   assert.ok(exported.content.includes("'=SUM(1+1)"));
   assert.ok(

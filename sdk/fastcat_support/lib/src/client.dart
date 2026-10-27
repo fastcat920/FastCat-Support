@@ -112,14 +112,28 @@ class FastCatClient {
     return value;
   }
 
-  Future<void> start({required String name, String email = ''}) async {
+  Future<void> start(
+      {required String email,
+      String? name,
+      Map<String, dynamic> profile = const {}}) async {
     if (hasSession)
       throw StateError(
           'A session already exists; reset explicitly to start a new conversation');
     final result = await _json('/start',
-        method: 'POST', body: {'name': name, 'email': email});
+        method: 'POST', body: {'email': email, 'profile': profile});
     _session = {'id': result['id'], 'token': result['token'], 'appKey': appKey};
     await store?.write(_storeKey, jsonEncode(_session));
+  }
+
+  /// Update only this authenticated conversation's visitor profile.
+  Future<void> updateProfile(
+      {String? email, Map<String, dynamic> profile = const {}}) async {
+    _requireSession();
+    await _json('/profile', method: 'POST', body: {
+      'id': conversationId,
+      if (email != null) 'email': email,
+      'profile': profile
+    });
   }
 
   Future<bool> restore() async {

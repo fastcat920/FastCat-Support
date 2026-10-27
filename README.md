@@ -206,3 +206,20 @@ Flutter SDK 0.14.0 的聊天和入口控件默认跟随应用 Localizations 和�
 网页入口默认显示项目 F 图标，点击后同位置切换关闭图标。可在接入平台 → 网页端 → 组件外观上传 PNG / JPEG / WebP 图片、填写 HTTPS 图片地址或恢复默认图标。上传图片自动裁切并缩放；站点的内容安全策略如限制图片来源，需允许所选图标地址或 `data:` 图片。
 
 在本地 `file://` 页面测试时，可在该网页平台的基本设置启用「允许本地文件预览」。浏览器将本地文件和其他不透明来源都标记为 `null`，该开关会允许这些来源访问此公开平台，正式运行时应关闭并填写具体网站来源。嵌入 HTTPS 网站时，客服服务和脚本也需要使用 HTTPS。
+
+## 0.23.0：邮箱与访客资料
+
+新会话必须提供邮箱；邮箱作为访客名称，不凭邮箱合并或验证不同访客。网页嵌入可使用 `data-email` 或 `data-visitor` 传递资料：
+
+```html
+<script
+  src="https://support.example.com/embed.js"
+  data-app-key="YOUR_APP_KEY"
+  data-visitor='{"email":"user@example.com","profile":{"externalId":"customer-123","company":"Example","platform":"Web","custom":{"plan":"Pro"}}}'
+  defer
+></script>
+```
+
+网页宿主可更新该脚本元素的 `data-visitor` 属性，已建立会话会使用其访客凭据同步当前资料。没有传入邮箱时，访客在聊天窗口填写。Flutter SDK 0.15.0 使用 `start(email: ..., profile: ...)` 和 `updateProfile(profile: ...)`；更新旧版仅传姓名的调用后才能创建新会话。支持的字段和约束见 [SDK 文档](sdk/fastcat_support/README.md)。
+
+消息时间后使用 ✓ / ✓✓ 标识发送 / 已读；通用设置及平台外观显示主题色色块。标签管理及会话标签操作已移除，原标签数据保留。

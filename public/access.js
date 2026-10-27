@@ -7,7 +7,7 @@ export function createAccessUI({ api, E, modal, toast }) {
     }
   };
   const input = (label, name, value = "", type = "text") =>
-    `<div class="field"><label>${label}<input name="${name}" type="${type}" value="${E(value)}"></label></div>`;
+    `<div class="field"><label>${label}${type === "color" ? `<span class="color-control"><input name="${name}" type="color" value="${E(value)}"><output>${E(value.toUpperCase())}</output></span>` : `<input name="${name}" type="${type}" value="${E(value)}">`}</label></div>`;
   const widgetDefaults = {
     themeColor: "#5b4ee8",
     language: "auto",
@@ -155,7 +155,7 @@ export function createAccessUI({ api, E, modal, toast }) {
     const code = () =>
       c.type === "web"
         ? `<script src="${location.origin}/embed.js" data-app-key="${c.public_key}" charset="utf-8" defer></script>`
-        : `final support = FastCatClient(\n  baseUrl: Uri.parse('${location.origin}'),\n  appKey: '${c.public_key}',\n);\nawait support.start(name: '客户称呼');\n// FastCatChat(client: support)`;
+        : `final support = FastCatClient(\n  baseUrl: Uri.parse('${location.origin}'),\n  appKey: '${c.public_key}',\n);\nawait support.start(email: 'customer@example.com');\n// FastCatChat(client: support)`;
     let uploadedIcon = w.launcherIconUrl.startsWith("data:")
       ? w.launcherIconUrl
       : "";
@@ -295,6 +295,9 @@ export function createAccessUI({ api, E, modal, toast }) {
       const preview = o.querySelector("#widget-design-preview");
       preview.querySelector("header").style.background =
         form.elements.themeColor.value;
+      form.elements.themeColor.parentElement.querySelector(
+        "output",
+      ).textContent = form.elements.themeColor.value.toUpperCase();
       preview.querySelector("[data-preview-title]").textContent =
         form.elements.title.value;
       preview.querySelector("[data-preview-welcome]").textContent =

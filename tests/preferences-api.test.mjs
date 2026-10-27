@@ -163,7 +163,9 @@ test("avatar upload persists for its owner and rejects executable or oversized c
 });
 test("notification feed excludes staff/system messages and conversations outside current access scope", async () => {
   const baseline = (await call("/notifications")).data.cursor;
-  const v = (await call("/widget/start", "POST", { name: "通知访客" })).data;
+  const v = (
+    await call("/widget/start", "POST", { email: "notification@example.test" })
+  ).data;
   const send = (body, key) =>
     call("/widget/messages", "POST", { id: v.id, body, clientId: key }, "", {
       Authorization: "Bearer " + v.token,

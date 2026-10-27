@@ -1,6 +1,6 @@
 # FastCat Support · Flutter / Dart SDK
 
-SDK 版本 0.14.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
+SDK 版本 0.15.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
 
 ## 安装与连接
 
@@ -21,7 +21,7 @@ final support = FastCatClient(
   // store: AppSecureSessionStore(),
 );
 if (!await support.restore()) {
-  await support.start(name: '客户称呼', email: '可选邮箱');
+  await support.start(email: 'customer@example.com', profile: {'platform': 'Flutter', 'device': 'Phone', 'custom': {'plan': 'Pro'}});
 }
 // 在 Flutter 页面中展示；页面销毁不会关闭共享 client。
 FastCatChat(client: support);
@@ -93,3 +93,9 @@ FastCatChat 与可独立使用的 FastCatMessageBody 支持 Markdown、rich_text
 `FastCatChat` 和 `FastCatLauncher` 默认跟随宿主 `MaterialApp` 的 `Localizations.locale`（简体中文或英文）和 `ThemeData` 的明暗模式。主题色通过公开的平台配置接口读取，始终使用后台设置，不跟随宿主的主色。应用切换语言或明暗模式后，聊天控件随之更新。可传入 `locale: const Locale('en')` 或 `locale: const Locale('zh', 'CN')` 固定聊天语言；自定义 `title` 和服务端消息不做机器翻译。
 
 客服结束会话后，输入和发送保持可用。下一条新消息会重新打开同一会话；服务端按该平台 AI 策略恢复接待，纯人工策略不被覆盖。失败消息仍使用原 clientId 重试，已成功消息的重试不会重开会话。
+
+## 访客资料
+
+首次 `start` 必须传邮箱，邮箱作为访客名称。`profile` 可传 `externalId`、`displayName`、`phone`、`company`、`jobTitle`、`source`、`timezone`、`platform`、`device`、`os`、`appVersion`、`browser`、`language`、`location`，以及 `custom` 自定义字段（字符串、数字或布尔值）。已建立会话时可调用 `await support.updateProfile(profile: {'device': 'Phone'})` 更新当前会话资料。
+
+邮箱及客户端资料属于访客提供的信息，不作为已验证身份，也不会按邮箱合并不同会话。旧版仅传姓名的 SDK 调用需更新为传入邮箱。

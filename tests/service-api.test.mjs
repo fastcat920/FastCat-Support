@@ -38,7 +38,7 @@ async function call(path, method = "GET", body, headers = {}) {
 async function start(appKey = "") {
   return (
     await call("/widget/start" + (appKey ? "?appKey=" + appKey : ""), "POST", {
-      name: "测试访客",
+      email: "service@example.test",
     })
   ).data;
 }

@@ -94,7 +94,7 @@ test("visitor API supports SDK origin CORS while staff APIs remain same-origin; 
   const visitor = await call(
     "/api/widget/start?appKey=" + sdk.public_key,
     "POST",
-    { name: "Flutter 客户" },
+    { email: "flutter@example.test" },
     headers,
   );
   assert.equal(visitor.status, 201);
@@ -197,7 +197,7 @@ test("new site instances publish appearance, retain sessions across key rotation
   assert.equal(config.data.title, "专属客服");
   const visitor = (
     await call("/api/widget/start?appKey=" + p.public_key, "POST", {
-      name: "独立访客",
+      email: "site@example.test",
     })
   ).data;
   let page = await call(
@@ -335,5 +335,77 @@ test("local file access is opt-in for web channels and custom icon URL is valida
   assert.equal(
     (await call(configPath, "GET", undefined, { Origin: "null" })).status,
     403,
+  );
+});
+
+test("visitor email is required and supplied profile stays isolated by visitor token", async () => {
+  const channel = (await call("/api/access/channels")).data.find(
+    (c) => c.type === "web",
+  );
+  const start = "/api/widget/start?appKey=" + channel.public_key;
+  assert.equal(
+    (await call(start, "POST", { name: "missing email" })).status,
+    400,
+  );
+  assert.equal(
+    (await call(start, "POST", { email: "not-an-email" })).status,
+    400,
+  );
+  const first = await call(start, "POST", {
+    name: "ignored",
+    email: "USER@Example.com",
+    profile: { company: "Acme", platform: "Flutter", custom: { plan: "Pro" } },
+  });
+  assert.equal(first.status, 201);
+  let detail = (await call("/api/conversations/" + first.data.id)).data
+    .conversation;
+  assert.equal(detail.name, "user@example.com");
+  assert.equal(detail.email, "user@example.com");
+  assert.equal(detail.profile.company, "Acme");
+  assert.equal(detail.profile.custom.plan, "Pro");
+  const second = await call(start, "POST", { email: "user@example.com" });
+  assert.equal(second.status, 201);
+  const path = "/api/widget/profile?appKey=" + channel.public_key;
+  assert.equal(
+    (
+      await call(
+        path,
+        "POST",
+        { id: second.data.id, profile: { phone: "123" } },
+        { Authorization: "Bearer " + first.data.token },
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await call(
+        path,
+        "POST",
+        { id: first.data.id, profile: { phone: "123", device: "Phone" } },
+        { Authorization: "Bearer " + first.data.token },
+      )
+    ).status,
+    200,
+  );
+  detail = (await call("/api/conversations/" + first.data.id)).data
+    .conversation;
+  assert.equal(detail.profile.phone, "123");
+  assert.equal(detail.profile.company, "Acme");
+  assert.equal(
+    (await call("/api/conversations/" + second.data.id)).data.conversation
+      .profile.phone,
+    undefined,
+  );
+  assert.equal(
+    (
+      await call(
+        path,
+        "POST",
+        { id: first.data.id, profile: { company: "x".repeat(201) } },
+        { Authorization: "Bearer " + first.data.token },
+      )
+    ).status,
+    400,
   );
 });

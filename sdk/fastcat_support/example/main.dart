@@ -7,6 +7,6 @@ Future<void> main() async {
       baseUrl: Uri.parse('https://support.example.com'),
       appKey: '从后台 SDK 平台复制');
   // Inject an app-owned FastCatSessionStore for persistence across app launches.
-  await client.start(name: '演示客户');
+  await client.start(email: 'demo@example.com');
   runApp(MaterialApp(home: FastCatChat(client: client)));
 }

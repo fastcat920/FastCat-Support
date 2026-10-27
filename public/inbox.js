@@ -1,3 +1,4 @@
+import { receiptMarkup } from "./message-status.js";
 import { nextConversation } from "./inbox-selection.js";
 import { bindComposer } from "./chat-controls.js";
 import { renderMessage, bindMessageActions } from "./message-renderer.js";
@@ -29,7 +30,6 @@ export function createInboxUI({
       status: "open",
       assignee: "all",
       priority: "all",
-      tag: "",
       unread: false,
       q: "",
     },
@@ -38,7 +38,6 @@ export function createInboxUI({
     total: 0,
     counts: {},
     members: [],
-    tags: [],
     selected: new Set(),
     detail: null,
     threadKey: "",
@@ -71,10 +70,6 @@ export function createInboxUI({
         (r) =>
           `<option value="${r.id}" ${r.id === value ? "selected" : ""} ${r.active ? "" : "disabled"}>${E(r.name)}${!r.active ? "（已停用）" : r.workload ? " · " + r.workload + " 待处理" : ""}</option>`,
       )
-      .join("");
-  const tagsHTML = (tags) =>
-    (tags || [])
-      .map((t) => `<span class="tag-chip ${E(t.color)}">${E(t.name)}</span>`)
       .join("");
   function params(paged = true) {
     const f = state.filter,
@@ -155,7 +150,6 @@ export function createInboxUI({
         status: "open",
         assignee: "all",
         priority: "all",
-        tag: "",
         unread: false,
         q: "",
       };
@@ -169,7 +163,7 @@ export function createInboxUI({
       state.selected.clear();
       try {
         const f = JSON.parse(localStorage.getItem("fc_inbox_" + me.id) || "{}");
-        for (const key of ["status", "assignee", "priority", "tag", "unread"])
+        for (const key of ["status", "assignee", "priority", "unread"])
           if (Object.hasOwn(f, key)) state.filter[key] = f[key];
       } catch {}
     }
@@ -178,12 +172,9 @@ export function createInboxUI({
   async function mount() {
     const mountId = ++mountRevision;
     ensureIdentity();
-    const [members, tags] = await Promise.all([api("/members"), api("/tags")]);
+    const members = await api("/members");
     if (!isActive() || mountId !== mountRevision) return;
     state.members = members;
-    state.tags = tags;
-    if (state.filter.tag && !tags.some((t) => t.id === state.filter.tag))
-      state.filter.tag = "";
     document.querySelector("#view").innerHTML =
       `<div class="inbox inbox-v3 ${state.active ? "has-chat" : ""}"><section class="conversation-list"><div class="list-head"><div class="panel-head inbox-list-heading"><h2>会话收件箱 <span class="small" id="queue-total"></span></h2><button class="quiet" id="export-conversations" aria-label="导出当前会话筛选" title="导出 CSV">↧</button></div><input id="conversation-search" placeholder="搜索访客、主题或历史消息…" aria-label="搜索会话" value="${E(state.filter.q)}"><div class="queue-scopes"><button data-scope="mine" class="${state.filter.assignee === "mine" ? "active" : ""}">我负责</button><button data-scope="unassigned" class="${state.filter.assignee === "unassigned" ? "active" : ""}">未分配</button><button data-scope="all" class="${state.filter.assignee === "all" ? "active" : ""}">全部</button></div><div class="tabs inbox-status-tabs">${[
         ["open", "待处理"],
@@ -211,7 +202,7 @@ export function createInboxUI({
         )
         .join(
           "",
-        )}</select></div><div class="field"><label for="tag-filter">标签</label><select id="tag-filter"><option value="">全部标签</option>${tags.map((t) => `<option value="${t.id}" ${state.filter.tag === t.id ? "selected" : ""}>${E(t.name)}</option>`).join("")}</select></div></div><div class="row"><label class="small row"><input class="switch" type="checkbox" id="unread-filter" ${state.filter.unread ? "checked" : ""}>仅未读</label><button class="quiet small" id="reset-filters">重置筛选</button></div></details></div><div class="selection-toolbar"><label class="small row"><input type="checkbox" class="switch" id="select-page" aria-label="全选当前页">当前页</label><span class="small" id="selected-count">未选择</span><button id="bulk-manage" class="quiet small" disabled>批量处理</button></div><div id="conversations"></div><div class="queue-pagination"><button id="prev-page" aria-label="上一页">←</button><span id="page-info" class="small"></span><button id="next-page" aria-label="下一页">→</button></div></section><section class="chat" id="chat"></section><aside class="visitor-panel" id="visitor-panel"></aside></div>`;
+        )}</select></div></div><div class="row"><label class="small row"><input class="switch" type="checkbox" id="unread-filter" ${state.filter.unread ? "checked" : ""}>仅未读</label><button class="quiet small" id="reset-filters">重置筛选</button></div></details></div><div class="selection-toolbar"><label class="small row"><input type="checkbox" class="switch" id="select-page" aria-label="全选当前页">当前页</label><span class="small" id="selected-count">未选择</span><button id="bulk-manage" class="quiet small" disabled>批量处理</button></div><div id="conversations"></div><div class="queue-pagination"><button id="prev-page" aria-label="上一页">←</button><span id="page-info" class="small"></span><button id="next-page" aria-label="下一页">→</button></div></section><section class="chat" id="chat"></section><aside class="visitor-panel" id="visitor-panel"></aside></div>`;
     document.querySelector("#owner-filter").value = state.filter.assignee;
     document
       .querySelectorAll("[data-scope]")
@@ -226,7 +217,6 @@ export function createInboxUI({
     for (const [id, key] of [
       ["owner-filter", "assignee"],
       ["priority-filter", "priority"],
-      ["tag-filter", "tag"],
     ])
       document.getElementById(id).onchange = (e) =>
         setFilter(key, e.target.value);
@@ -246,7 +236,6 @@ export function createInboxUI({
         status: "open",
         assignee: "all",
         priority: "all",
-        tag: "",
         unread: false,
         q: "",
       };
@@ -370,16 +359,13 @@ export function createInboxUI({
         (s) => (s.textContent = state.counts[s.dataset.statusCount] || 0),
       );
     document.querySelector("#active-filter-count").textContent =
-      [
-        state.filter.priority !== "all",
-        !!state.filter.tag,
-        state.filter.unread,
-      ].filter(Boolean).length || "";
+      [state.filter.priority !== "all", state.filter.unread].filter(Boolean)
+        .length || "";
     document.querySelector("#conversations").innerHTML = state.items.length
       ? state.items
           .map(
             (c) =>
-              `<div class="conversation-row ${state.active === c.id ? "active" : ""} ${state.selected.has(c.id) ? "selected" : ""}"><input type="checkbox" class="conversation-select" data-select="${c.id}" aria-label="选择 ${E(c.name)} 的会话" ${state.selected.has(c.id) ? "checked" : ""}><button class="conversation" data-conversation="${c.id}"><span class="avatar">${E(c.name[0])}</span><span class="conversation-summary"><span class="conversation-title"><strong>${E(c.name)}</strong><time>${new Date(c.updated).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time></span><span class="preview">${E(c.preview || c.subject)}</span><span class="conversation-meta"><span>${E(c.assigneeName || (c.automation_mode === "ai" ? "AI 助手" : "未分配"))}</span>${["high", "urgent"].includes(c.priority) ? `<span class="priority-pill ${c.priority}">${priorityNames[c.priority]}</span>` : ""}${c.unreadCount ? `<span class="unread-count">${c.unreadCount}</span>` : ""}</span>${c.tags.length ? `<span class="conversation-tags">${tagsHTML(c.tags.slice(0, 2))}</span>` : ""}</span></button></div>`,
+              `<div class="conversation-row ${state.active === c.id ? "active" : ""} ${state.selected.has(c.id) ? "selected" : ""}"><input type="checkbox" class="conversation-select" data-select="${c.id}" aria-label="选择 ${E(c.name)} 的会话" ${state.selected.has(c.id) ? "checked" : ""}><button class="conversation" data-conversation="${c.id}"><span class="avatar">${E(c.name[0])}</span><span class="conversation-summary"><span class="conversation-title"><strong>${E(c.name)}</strong><time>${new Date(c.updated).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time></span><span class="preview">${E(c.preview || c.subject)}</span><span class="conversation-meta"><span>${E(c.assigneeName || (c.automation_mode === "ai" ? "AI 助手" : "未分配"))}</span>${["high", "urgent"].includes(c.priority) ? `<span class="priority-pill ${c.priority}">${priorityNames[c.priority]}</span>` : ""}${c.unreadCount ? `<span class="unread-count">${c.unreadCount}</span>` : ""}</span></span></button></div>`,
           )
           .join("")
       : '<div class="empty"><strong>暂无匹配会话</strong><p>可以调整筛选条件或等待新的客户咨询。</p></div>';
@@ -445,18 +431,12 @@ export function createInboxUI({
         priorityNames,
       )
         .map(([k, v]) => `<option value="${k}">${v}</option>`)
-        .join(
-          "",
-        )}</select></div><label class="small row"><input type="checkbox" class="switch" name="updateTags">同时替换标签</label><div class="tag-picker">${state.tags.map((t) => `<label><input type="checkbox" class="switch" value="${t.id}" data-bulk-tag>${tagsHTML([t])}</label>`).join("")}</div>`,
+        .join("")}</select></div>`,
       "应用更改",
       async (b) => {
         const changes = {};
         for (const key of ["status", "assignee", "priority"])
           if (b[key] !== "keep") changes[key] = b[key];
-        if (b.updateTags)
-          changes.tagIds = [
-            ...o.querySelectorAll("[data-bulk-tag]:checked"),
-          ].map((x) => x.value);
         if (!Object.keys(changes).length) throw Error("请选择需要更改的项目");
         await api("/conversations/bulk", {
           method: "POST",
@@ -606,13 +586,19 @@ export function createInboxUI({
       document.querySelector("#ai-draft").onclick = () => aiDebug(null, id);
       drawVisitor(c);
     }
+    if (
+      !initial &&
+      JSON.stringify([previous.name, previous.email, previous.profile]) !==
+        JSON.stringify([c.name, c.email, c.profile])
+    )
+      drawVisitor(c);
     const headerKey = JSON.stringify([
       c.subject,
       c.status,
       c.assignee,
       c.priority,
-      c.tags,
       state.members,
+      c.name,
     ]);
     if (headerKey !== state.headerKey) {
       state.headerKey = headerKey;
@@ -664,7 +650,7 @@ export function createInboxUI({
         ? data.messages
             .map(
               (m) =>
-                `<div class="message ${m.role}"><div class="bubble ${m.attachment ? "attachment-bubble" : ""}">${m.attachment ? media.render(m.attachment) : renderMessage(m.body, { plain: m.role === "visitor" || m.role === "note" })}</div><div class="small">${E(m.role === "visitor" ? c.name : m.role === "note" ? (m.senderName || "客服") + " · 内部备注" : m.source === "ai" ? "AI 助手" : m.source === "system" ? "系统" : m.senderName || "客服")}${m.role === "agent" ? (m.seq <= data.receipts?.readSeq ? " · 已读" : m.seq <= data.receipts?.deliveredSeq ? " · 已送达" : " · 已发送") : ""} · ${new Date(m.created).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</div></div>`,
+                `<div class="message ${m.role}"><div class="bubble ${m.attachment ? "attachment-bubble" : ""}">${m.attachment ? media.render(m.attachment) : renderMessage(m.body, { plain: m.role === "visitor" || m.role === "note" })}</div><div class="small">${E(m.role === "visitor" ? c.name : m.role === "note" ? (m.senderName || "客服") + " · 内部备注" : m.source === "ai" ? "AI 助手" : m.source === "system" ? "系统" : m.senderName || "客服")} · ${new Date(m.created).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}${m.role === "agent" && m.source !== "system" ? " " + receiptMarkup(m.seq, data.receipts) : ""}</div></div>`,
             )
             .join("")
         : '<p class="small thread-welcome">对话已建立，等待访客消息。</p>';
@@ -703,21 +689,52 @@ export function createInboxUI({
     document.querySelector("#visitor-assignee").textContent =
       c.assigneeName || "未分配";
     document.querySelector("#visitor-priority").value = c.priority;
-    document.querySelector("#visitor-tags").innerHTML =
-      tagsHTML(c.tags) || '<span class="small">暂无标签</span>';
     if (!state.notesDirty)
       document.querySelector("#visitor-notes").value = c.notes || "";
   }
+  function profileDetails(profile = {}) {
+    const labels = {
+      externalId: "用户 ID",
+      displayName: "姓名",
+      phone: "电话",
+      company: "公司",
+      jobTitle: "职位",
+      source: "来源",
+      timezone: "时区",
+      platform: "平台",
+      device: "设备",
+      os: "系统",
+      appVersion: "应用版本",
+      browser: "浏览器",
+      language: "语言",
+      location: "地区",
+    };
+    const rows = Object.entries(labels)
+      .filter(([key]) => profile[key])
+      .map(
+        ([key, label]) =>
+          `<div class="visitor-info-row"><dt>${label}</dt><dd>${E(profile[key])}</dd></div>`,
+      )
+      .join("");
+    const custom = Object.entries(profile.custom || {})
+      .map(
+        ([key, value]) =>
+          `<div class="visitor-info-row"><dt>${E(key)}</dt><dd>${E(value)}</dd></div>`,
+      )
+      .join("");
+    return `${rows ? `<section class="visitor-info-section"><h3>用户资料</h3><dl>${rows}</dl></section>` : ""}${custom ? `<section class="visitor-info-section"><h3>自定义信息</h3><dl>${custom}</dl></section>` : ""}`;
+  }
   function drawVisitor(c) {
     state.notesDirty = noteDrafts.has(c.id);
+    const profile = c.profile || {};
     document.querySelector("#visitor-panel").innerHTML =
-      `<div class="avatar">${E(c.name[0])}</div><h2>${E(c.name)}</h2><span class="small">网站访客</span><dl><dt>邮箱</dt><dd>${E(c.email || "未提供")}</dd><dt>当前状态</dt><dd id="visitor-state"></dd><dt>负责客服</dt><dd id="visitor-assignee"></dd></dl><div class="field"><label for="visitor-priority">优先级</label><select id="visitor-priority">${Object.entries(
+      `<div class="visitor-profile-head"><div class="avatar">${E((c.name || "?")[0])}</div><div><h2>${E(c.name)}</h2><span class="small">${profile.platform ? E(profile.platform) : "访客"} · 访客提供</span></div></div><section class="visitor-info-section"><h3>联系信息</h3><dl><div class="visitor-info-row"><dt>邮箱</dt><dd>${E(c.email || "未提供")}</dd></div><div class="visitor-info-row"><dt>当前状态</dt><dd id="visitor-state"></dd></div><div class="visitor-info-row"><dt>负责客服</dt><dd id="visitor-assignee"></dd></div></dl></section>${profileDetails(profile)}<section class="visitor-info-section"><div class="field"><label for="visitor-priority">优先级</label><select id="visitor-priority">${Object.entries(
         priorityNames,
       )
         .map(([k, v]) => `<option value="${k}">${v}</option>`)
         .join(
           "",
-        )}</select></div><div class="panel-head visitor-section-head"><span class="small">标签</span><button id="edit-tags" class="quiet small">编辑</button></div><div id="visitor-tags" class="row visitor-tags"></div><label for="visitor-notes" class="small">客户备注</label><textarea id="visitor-notes" placeholder="记录需要交接的信息…"></textarea><button id="save-notes">保存备注</button>`;
+        )}</select></div><label for="visitor-notes" class="small">客户备注</label><textarea id="visitor-notes" placeholder="记录需要交接的信息…"></textarea><button id="save-notes">保存备注</button></section>`;
     document.querySelector("#visitor-priority").onchange = safe((e) =>
       change({ priority: e.target.value }),
     );
@@ -734,32 +751,11 @@ export function createInboxUI({
       noteDrafts.delete(c.id);
       toast("备注已保存");
     });
-    document.querySelector("#edit-tags").onclick = () =>
-      tagDialog(state.detail.conversation);
-  }
-  function tagDialog(c) {
-    const o = modal(
-      "会话标签",
-      state.tags.length
-        ? `<div class="tag-picker">${state.tags.map((t) => `<label><input class="switch" type="checkbox" data-tag="${t.id}" ${c.tags.some((v) => v.id === t.id) ? "checked" : ""}>${tagsHTML([t])}</label>`).join("")}</div>`
-        : '<p class="small">管理员可以在标签管理页面创建业务标签。</p>',
-      "保存",
-      () =>
-        change(
-          {
-            tagIds: [...o.querySelectorAll("[data-tag]:checked")].map(
-              (t) => t.dataset.tag,
-            ),
-          },
-          c.revision,
-          c.id,
-        ),
-    );
   }
   function visitorDialog(c) {
-    const o = modal(
+    modal(
       "访客与会话",
-      `<h3>${E(c.name)}</h3><p class="small">${E(c.email || "未提供邮箱")}</p><div class="field"><label for="dialog-priority">优先级</label><select name="priority" id="dialog-priority">${Object.entries(
+      `<h3>${E(c.name)}</h3><p class="small">${E(c.email || "未提供邮箱")} · 访客提供</p>${profileDetails(c.profile || {})}<div class="field"><label for="dialog-priority">优先级</label><select name="priority" id="dialog-priority">${Object.entries(
         priorityNames,
       )
         .map(
@@ -777,12 +773,9 @@ export function createInboxUI({
         )
         .join(
           "",
-        )}</select></div><div class="field"><label for="dialog-notes">客户备注</label><textarea id="dialog-notes" name="notes">${E(noteDrafts.get(c.id) ?? c.notes ?? "")}</textarea></div><label class="small">会话标签</label><div class="tag-picker">${state.tags.map((t) => `<label><input class="switch" type="checkbox" data-dialog-tag="${t.id}" ${c.tags.some((tag) => tag.id === t.id) ? "checked" : ""}>${tagsHTML([t])}</label>`).join("")}</div>`,
+        )}</select></div><div class="field"><label for="dialog-notes">客户备注</label><textarea id="dialog-notes" name="notes">${E(noteDrafts.get(c.id) ?? c.notes ?? "")}</textarea></div>`,
       "保存",
       async (b) => {
-        b.tagIds = [...o.querySelectorAll("[data-dialog-tag]:checked")].map(
-          (t) => t.dataset.dialogTag,
-        );
         await change(b, c.revision, c.id);
         state.notesDirty = false;
         noteDrafts.delete(c.id);
@@ -839,7 +832,6 @@ export function createInboxUI({
       status: "all",
       assignee: "all",
       priority: "all",
-      tag: "",
       unread: false,
       q: "",
     };

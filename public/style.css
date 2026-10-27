@@ -3601,3 +3601,95 @@ label:has(> input:is([type="checkbox"], [type="radio"])) {
     padding: 16px;
   }
 }
+/* Shared form controls and conversation metadata. */
+.color-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  padding: 5px 10px 5px 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  width: max-content;
+  max-width: 100%;
+}
+.color-control input[type="color"] {
+  width: 48px;
+  height: 40px;
+  min-width: 48px;
+  padding: 2px;
+  cursor: pointer;
+  border-radius: 7px;
+  background: transparent;
+}
+.color-control output {
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+  font-size: 13px;
+}
+.message-receipt {
+  display: inline-block;
+  margin-left: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: -2px;
+  padding-right: 2px;
+}
+.message-receipt.read {
+  color: var(--brand);
+}
+.visitor-profile-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.visitor-profile-head h2 {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+.visitor-info-section {
+  padding: 17px 0;
+  border-bottom: 1px solid var(--line);
+}
+.visitor-info-section h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.inbox-v3 .visitor-info-section dl {
+  margin: 0;
+}
+.visitor-info-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) minmax(0, 1.5fr);
+  gap: 8px;
+  padding: 6px 0;
+}
+.inbox-v3 .visitor-info-row dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.inbox-v3 .visitor-info-row dd {
+  margin: 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.content .page-heading {
+  gap: 16px;
+  align-items: flex-start;
+}
+.field label {
+  line-height: 1.45;
+}
+@media (max-width: 600px) {
+  .content .page-heading {
+    flex-wrap: wrap;
+  }
+  .visitor-info-row {
+    grid-template-columns: minmax(68px, 1fr) minmax(0, 1.5fr);
+  }
+}

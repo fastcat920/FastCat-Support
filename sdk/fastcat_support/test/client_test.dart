@@ -21,6 +21,27 @@ class MemoryStore implements FastCatSessionStore {
 }
 
 void main() {
+  test('email and visitor profile use the authenticated session', () async {
+    final requests = <http.Request>[];
+    final client = FastCatClient(
+        baseUrl: Uri.parse('https://support.example.com'),
+        appKey: 'sdk-key',
+        client: MockClient((r) async {
+          requests.add(r);
+          return http.Response(
+              jsonEncode(r.url.path.endsWith('/start')
+                  ? {'id': 'conversation', 'token': 'visitor-token'}
+                  : {'ok': true}),
+              200);
+        }));
+    await client.start(email: 'user@example.com', profile: {'device': 'Phone'});
+    await client.updateProfile(profile: {'company': 'Acme'});
+    expect(jsonDecode(requests[0].body)['email'], 'user@example.com');
+    expect(jsonDecode(requests[0].body)['profile']['device'], 'Phone');
+    expect(requests[1].headers['authorization'], 'Bearer visitor-token');
+    expect(jsonDecode(requests[1].body)['profile']['company'], 'Acme');
+    client.close();
+  });
   test(
       'public configuration reads channel accent without requiring a visitor session',
       () async {
@@ -58,7 +79,7 @@ void main() {
         appKey: 'sdk-key',
         store: store,
         client: mock);
-    await client.start(name: '客户');
+    await client.start(email: 'customer@example.test');
     final restored = FastCatClient(
         baseUrl: client.baseUrl,
         appKey: client.appKey,
@@ -99,7 +120,7 @@ void main() {
         baseUrl: Uri.parse('http://localhost:4310'),
         appKey: 'sdk',
         client: mock);
-    await c.start(name: '客户');
+    await c.start(email: 'customer@example.test');
     final id = FastCatClient.newClientId();
     await expectLater(
         c.sendText('问题', clientId: id), throwsA(isA<http.ClientException>()));
@@ -132,7 +153,7 @@ void main() {
         baseUrl: Uri.parse('https://support.example.com'),
         appKey: 'sdk',
         client: mock);
-    await c.start(name: '客户');
+    await c.start(email: 'customer@example.test');
     final pages = await c.watch().take(2).toList();
     expect(pages.length, 2);
     expect(queries, ['0', '1']);
@@ -165,7 +186,7 @@ void main() {
     final reads = <int>[];
     final a = client.connectionStatusStream.listen(states.add),
         b = client.readCursorStream.listen(reads.add);
-    await client.start(name: '客户');
+    await client.start(email: 'customer@example.test');
     await client.watch().take(1).toList();
     await client.acknowledge(deliveredSeq: 9, readSeq: 7);
     await Future<void>.delayed(Duration.zero);

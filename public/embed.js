@@ -49,7 +49,15 @@
   const host = () => {
     const html = document.documentElement,
       styles = getComputedStyle(html);
+    let visitor = {};
+    try {
+      visitor = JSON.parse(script.dataset.visitor || "{}");
+    } catch {}
+    if (!visitor || typeof visitor !== "object" || Array.isArray(visitor))
+      visitor = {};
+    if (script.dataset.email) visitor.email = script.dataset.email;
     return {
+      visitor,
       type: "fastcat:appearance",
       language: script.dataset.language || html.lang || navigator.language,
       theme:
@@ -206,7 +214,12 @@
   });
   new MutationObserver(sync).observe(script, {
     attributes: true,
-    attributeFilter: ["data-language", "data-theme"],
+    attributeFilter: [
+      "data-language",
+      "data-theme",
+      "data-email",
+      "data-visitor",
+    ],
   });
   systemTheme.addEventListener("change", sync);
   window.addEventListener("languagechange", sync);

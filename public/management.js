@@ -157,36 +157,6 @@ export function createManagementUI({
         ?.addEventListener("click", () => replyDialog());
       return;
     }
-    if (page === "tags") {
-      const rows = await api("/tags");
-      if (revision !== epoch || !isActive(page)) return;
-      v.innerHTML = `<div class="content management-page">${heading("标签管理", "用统一的业务标签整理会话，便于筛选与协作。", '<button class="primary" id="new-tag">＋ 新建标签</button>')}<section class="panel">${rows.length ? `<div class="tag-library">${rows.map((r) => `<div class="tag-management-row"><span class="tag-chip ${r.color}">${E(r.name)}</span><button class="quiet danger" data-delete-tag="${r.id}" aria-label="删除标签 ${E(r.name)}">删除</button></div>`).join("")}</div>` : empty("暂无标签", "例如：售后咨询、VIP 客户、等待回访。")}</section></div>`;
-      document.querySelector("#new-tag").onclick = () =>
-        modal(
-          "新建标签",
-          field("name", "标签名称") +
-            '<div class="field"><label for="tag-color">颜色</label><select id="tag-color" name="color"><option value="violet">紫色</option><option value="blue">蓝色</option><option value="green">绿色</option><option value="amber">橙色</option><option value="red">红色</option></select></div>',
-          "创建",
-          async (b) => {
-            await post("/tags", b);
-            render("tags");
-          },
-        );
-      document.querySelectorAll("[data-delete-tag]").forEach(
-        (b) =>
-          (b.onclick = () =>
-            modal(
-              "删除标签",
-              "<p>标签将从关联会话中移除，会话本身会保留。</p>",
-              "删除",
-              async () => {
-                await api("/tags/" + b.dataset.deleteTag, { method: "DELETE" });
-                render("tags");
-              },
-            )),
-      );
-      return;
-    }
     if (page === "audit") {
       const rows = await api("/audit");
       if (revision !== epoch || !isActive(page)) return;
@@ -241,7 +211,6 @@ export function createManagementUI({
             ["teams", "接待团队", "团队成员、接待状态和容量"],
             ["team-hours", "工作时间", "团队服务时段"],
             ["replies", "快捷回复", "维护团队常用服务话术"],
-            ["tags", "标签管理", "管理会话业务分类"],
             ["audit", "操作记录", "查看近期管理操作"],
           ]
         : [
@@ -352,7 +321,6 @@ export function createManagementUI({
             ["knowledge", "知识库"],
             ["workflow", "工作流"],
             ["replies", "快捷回复"],
-            ["tags", "标签管理"],
             ["audit", "操作记录"],
           ]
         : [

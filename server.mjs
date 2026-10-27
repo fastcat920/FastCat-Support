@@ -1,3 +1,7 @@
+import {
+  visitorIdentity,
+  cleanVisitorProfile,
+} from "./lib/visitor-profile.mjs";
 import { createSkills } from "./lib/skills.mjs";
 import { createDevices } from "./lib/devices.mjs";
 import { createAgentExtensions } from "./lib/agent-extensions.mjs";
@@ -43,7 +47,6 @@ import {
   handleManagement,
   handleInvite,
   listConversations,
-  conversationTags,
   assertConversationAccess,
   updateConversation,
   insertStaffMessage,
@@ -88,6 +91,13 @@ if (
   db.exec("ALTER TABLE messages ADD COLUMN read_at TEXT");
 migrateFeatures(db);
 migrateManagement(db);
+if (
+  !db
+    .prepare("PRAGMA table_info(visitors)")
+    .all()
+    .some((c) => c.name === "profile")
+)
+  db.exec("ALTER TABLE visitors ADD COLUMN profile TEXT NOT NULL DEFAULT '{}'");
 migrateService(db);
 migrateMedia(db);
 migrateProviders(db);
@@ -228,7 +238,7 @@ function messagePage(id, url, visitor = false) {
 function conversation(id) {
   return db
     .prepare(
-      "SELECT c.*,v.name,v.email,v.notes FROM conversations c JOIN visitors v ON v.id=c.visitor_id WHERE c.id=?",
+      "SELECT c.*,v.name,v.email,v.notes,v.profile FROM conversations c JOIN visitors v ON v.id=c.visitor_id WHERE c.id=?",
     )
     .get(id);
 }
@@ -363,19 +373,19 @@ const server = http.createServer(async (req, res) => {
           : {};
       if (p === "/api/widget/start" && method === "POST") {
         const channel = channels.authorize(req, url);
-        if (!String(b.name || "").trim())
-          return send(res, 400, { error: "请输入称呼" });
+        const identity = visitorIdentity(b);
         const v = uid(),
           c = uid(),
           token = randomBytes(32).toString("hex"),
           t = now();
         db.prepare(
-          "INSERT INTO visitors(id,name,email,token) VALUES(?,?,?,?)",
+          "INSERT INTO visitors(id,name,email,token,profile) VALUES(?,?,?,?,?)",
         ).run(
           v,
-          String(b.name).slice(0, 100),
-          String(b.email || "").slice(0, 200),
+          identity.name,
+          identity.email,
           token,
+          JSON.stringify(identity.profile),
         );
         db.prepare(
           "INSERT INTO conversations(id,visitor_id,subject,created,updated,channel_id) VALUES(?,?,?,?,?,?)",
@@ -401,6 +411,21 @@ const server = http.createServer(async (req, res) => {
       )
         return send(res, 403, { error: "会话凭据无效" });
       channels.authorize(req, url, c);
+      if (p === "/api/widget/profile" && method === "POST") {
+        const old = JSON.parse(c.profile || "{}");
+        const profile = cleanVisitorProfile(b.profile ?? {});
+        const email = b.email === undefined ? c.email : validateEmail(b.email);
+        db.prepare(
+          "UPDATE visitors SET email=?,name=?,profile=? WHERE id=?",
+        ).run(
+          email,
+          b.email === undefined ? c.name : email,
+          JSON.stringify({ ...old, ...profile }),
+          c.visitor_id,
+        );
+        broadcast(c.id);
+        return send(res, 200, { ok: true });
+      }
       const file = p.match(/^\/api\/widget\/attachments\/([^/]+)$/);
       if (file && method === "GET") {
         streamAttachment(db, res, file[1], { conversationId: c.id });
@@ -729,7 +754,7 @@ const server = http.createServer(async (req, res) => {
           return send(res, 200, {
             conversation: {
               ...c,
-              tags: conversationTags(db, c.id),
+              profile: JSON.parse(c.profile || "{}"),
               assigneeName:
                 db.prepare("SELECT name FROM users WHERE id=?").get(c.assignee)
                   ?.name || "",
@@ -856,13 +881,14 @@ const server = http.createServer(async (req, res) => {
           200,
           db
             .prepare(
-              "SELECT DISTINCT v.id,v.name,v.email,v.notes FROM visitors v JOIN conversations c ON c.visitor_id=v.id" +
+              "SELECT DISTINCT v.id,v.name,v.email,v.notes,v.profile FROM visitors v JOIN conversations c ON c.visitor_id=v.id" +
                 (u.role === "admin"
                   ? ""
                   : " WHERE (c.assignee='' OR c.assignee=?)") +
                 " ORDER BY v.rowid DESC",
             )
-            .all(...(u.role === "admin" ? [] : [u.id])),
+            .all(...(u.role === "admin" ? [] : [u.id]))
+            .map((v) => ({ ...v, profile: JSON.parse(v.profile || "{}") })),
         );
       if (p === "/api/resources" && method === "GET")
         return send(

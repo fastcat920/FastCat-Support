@@ -182,7 +182,7 @@ test("authentication, conversation lifecycle, visitor isolation and persistence"
   const second = await call(
     "/widget/start",
     "POST",
-    { name: "另一个访客" },
+    { email: "second@example.test" },
     false,
   );
   assert.equal(

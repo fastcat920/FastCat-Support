@@ -41,7 +41,6 @@ const titles = {
   members: "团队管理",
   teams: "团队管理",
   "team-hours": "工作时间",
-  tags: "标签管理",
   audit: "操作记录",
   settings: "设置",
 };
@@ -441,7 +440,7 @@ async function render() {
     if (page === "model") return await providerUI.render();
     if (page === "inbox") return await inboxUI.mount();
     if (page === "team-hours") return await serviceUI.render(page);
-    if (["members", "replies", "tags", "audit", "settings"].includes(page))
+    if (["members", "replies", "audit", "settings"].includes(page))
       return await managementUI.render(page);
     if (page === "visitors") {
       const rows = await api("/visitors");
@@ -449,10 +448,12 @@ async function render() {
       v.innerHTML = `<div class="content management-page">${heading("访客管理", "搜索客户资料，快速回到相关服务会话。")}<section class="panel"><div class="toolbar"><input id="visitor-query" aria-label="搜索访客" placeholder="搜索姓名、邮箱或备注…"><span class="small">${rows.length} 位可见访客</span></div><div id="visitor-table"></div></section></div>`;
       const draw = (q) => {
         const filtered = rows.filter((r) =>
-          (r.name + r.email + r.notes).toLowerCase().includes(q.toLowerCase()),
+          (r.name + r.email + r.notes + JSON.stringify(r.profile || {}))
+            .toLowerCase()
+            .includes(q.toLowerCase()),
         );
         document.querySelector("#visitor-table").innerHTML = filtered.length
-          ? `<div class="table-scroll"><table class="table"><thead><tr><th>姓名</th><th>邮箱</th><th>备注</th><th>操作</th></tr></thead><tbody>${filtered.map((r) => `<tr><td><strong>${E(r.name)}</strong></td><td>${E(r.email || "未提供")}</td><td>${E(r.notes || "—")}</td><td><button class="quiet" data-visitor-history="${r.id}">会话记录 →</button></td></tr>`).join("")}</tbody></table></div>`
+          ? `<div class="table-scroll"><table class="table"><thead><tr><th>姓名</th><th>邮箱</th><th>公司 / 平台</th><th>备注</th><th>操作</th></tr></thead><tbody>${filtered.map((r) => `<tr><td><strong>${E(r.name)}</strong></td><td>${E(r.email || "未提供")}</td><td>${E([r.profile?.company, r.profile?.platform].filter(Boolean).join(" · ") || "—")}</td><td>${E(r.notes || "—")}</td><td><button class="quiet" data-visitor-history="${r.id}">会话记录 →</button></td></tr>`).join("")}</tbody></table></div>`
           : empty("♧", "暂无匹配访客", "试试其他关键词，或等待新的客户咨询。");
         document.querySelectorAll("[data-visitor-history]").forEach(
           (button) =>

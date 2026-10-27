@@ -52,7 +52,7 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
   StreamSubscription<FastCatConnectionStatus>? _connectionSubscription;
   FastCatConnectionStatus _connection = FastCatConnectionStatus.idle;
   bool _sending = false, _closed = false;
-  int _lastSeq = 0, _ackSeq = 0;
+  int _lastSeq = 0, _ackSeq = 0, _peerReadSeq = 0;
   FastCatAttachment? _pendingFile;
   @override
   void initState() {
@@ -75,6 +75,8 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
       setState(() {
         if (_pendingId == null) _error = null;
         _closed = (page['conversation'] as Map?)?['status'] == 'closed';
+        _peerReadSeq =
+            (page['receipts'] as Map?)?['readSeq'] as int? ?? _peerReadSeq;
         final automation = page['automation'] as Map?;
         _typing = automation?['typing'] == true;
         _aiDraft = automation?['draft'] as String? ?? '';
@@ -115,6 +117,7 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
     super.didUpdateWidget(old);
     if (old.client != widget.client) {
       _primary = defaultSupportColor;
+      _peerReadSeq = 0;
       _loadAppearance();
       _subscription?.cancel();
       _connectionSubscription?.cancel();
@@ -218,43 +221,94 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
                                         ? _t("正在思考…", "Thinking…")
                                         : _aiDraft))));
                       final m = _messages[i];
+                      final sentAt =
+                          DateTime.tryParse(m['created'] as String? ?? '')
+                              ?.toLocal();
+                      final time = sentAt == null
+                          ? ''
+                          : '${sentAt.hour.toString().padLeft(2, '0')}:${sentAt.minute.toString().padLeft(2, '0')}';
+                      final own = m['role'] == 'visitor';
+                      final read =
+                          m['seq'] is int && (m['seq'] as int) <= _peerReadSeq;
                       return Align(
                           alignment: m['role'] == 'visitor'
                               ? Alignment.centerRight
                               : Alignment.centerLeft,
-                          child: Card(
-                              child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: m['attachment'] != null
-                                      ? TextButton(
-                                          onPressed: widget.onAttachment == null
-                                              ? null
-                                              : () async {
-                                                  try {
-                                                    final a =
-                                                        m['attachment'] as Map;
-                                                    final bytes = await widget
-                                                        .client
-                                                        .downloadAttachment(
-                                                            a['id'] as String);
-                                                    await widget.onAttachment!(
-                                                        a['filename'] as String,
-                                                        bytes);
-                                                  } catch (e) {
-                                                    if (mounted)
-                                                      setState(() => _error =
-                                                          e.toString());
-                                                  }
-                                                },
-                                          child: Text(
-                                              '${_t('附件', 'Attachment')}: ${(m['attachment'] as Map)['filename']}'))
-                                      : FastCatMessageBody(
-                                          body: m['body'] as String? ?? '',
-                                          plain: m['role'] == 'visitor',
-                                          locale: widget.locale,
-                                          onOpenLink: widget.onOpenLink,
-                                          onMessage: (value) => setState(
-                                              () => _text.text = value)))));
+                          child: Column(
+                              crossAxisAlignment: own
+                                  ? CrossAxisAlignment.end
+                                  : CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Card(
+                                    child: Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: m['attachment'] != null
+                                            ? TextButton(
+                                                onPressed: widget
+                                                            .onAttachment ==
+                                                        null
+                                                    ? null
+                                                    : () async {
+                                                        try {
+                                                          final a =
+                                                              m['attachment']
+                                                                  as Map;
+                                                          final bytes = await widget
+                                                              .client
+                                                              .downloadAttachment(
+                                                                  a['id']
+                                                                      as String);
+                                                          await widget
+                                                                  .onAttachment!(
+                                                              a['filename']
+                                                                  as String,
+                                                              bytes);
+                                                        } catch (e) {
+                                                          if (mounted)
+                                                            setState(() =>
+                                                                _error = e
+                                                                    .toString());
+                                                        }
+                                                      },
+                                                child: Text(
+                                                    '${_t('附件', 'Attachment')}: ${(m['attachment'] as Map)['filename']}'))
+                                            : FastCatMessageBody(
+                                                body:
+                                                    m['body'] as String? ?? '',
+                                                plain: m['role'] == 'visitor',
+                                                locale: widget.locale,
+                                                onOpenLink: widget.onOpenLink,
+                                                onMessage: (value) => setState(
+                                                    () =>
+                                                        _text.text = value)))),
+                                if (time.isNotEmpty)
+                                  Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8),
+                                      child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(time,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodySmall),
+                                            if (own)
+                                              Semantics(
+                                                  label: read
+                                                      ? _t("已读", "Read")
+                                                      : _t("已发送", "Sent"),
+                                                  child: Text(
+                                                      read ? "  ✓✓" : "  ✓",
+                                                      style: TextStyle(
+                                                          color: read
+                                                              ? _primary
+                                                              : Theme.of(
+                                                                      context)
+                                                                  .colorScheme
+                                                                  .onSurfaceVariant)))
+                                          ]))
+                              ]));
                     })),
             if (_error != null)
               Padding(

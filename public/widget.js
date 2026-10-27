@@ -1,3 +1,4 @@
+import { receiptMarkup } from "./message-status.js";
 import { setLanguage, observeLanguage } from "./i18n.js";
 import { resolveAppearance, applyAppearance } from "./appearance.js";
 import { bindComposer, createMessageSound } from "./chat-controls.js";
@@ -25,7 +26,9 @@ function widgetURL(path) {
   return u.href;
 }
 let appearanceConfig = {},
-  hostAppearance = {};
+  hostAppearance = {},
+  hostVisitor = {},
+  lastVisitor = "";
 const systemTheme = matchMedia("(prefers-color-scheme: dark)");
 function updateAppearance() {
   const appearance = resolveAppearance(appearanceConfig, hostAppearance, {
@@ -53,6 +56,23 @@ window.addEventListener("message", (event) => {
   )
     return;
   const value = event.data;
+  if (
+    value.visitor &&
+    typeof value.visitor === "object" &&
+    !Array.isArray(value.visitor)
+  ) {
+    hostVisitor = value.visitor;
+    const input = root.querySelector("#email");
+    if (input && !input.value && typeof hostVisitor.email === "string")
+      input.value = hostVisitor.email;
+    const current = JSON.stringify(hostVisitor);
+    if (session && Object.keys(hostVisitor).length && current !== lastVisitor) {
+      lastVisitor = current;
+      api("/profile", "POST", { ...hostVisitor, id: session.id }).catch(() => {
+        if (lastVisitor === current) lastVisitor = "";
+      });
+    }
+  }
   hostAppearance = {
     language:
       typeof value.language === "string"
@@ -149,17 +169,19 @@ function start() {
   document.querySelector("#widget-handoff").hidden = true;
   document.querySelector("#widget-service-status").textContent = "在线客服";
   root.innerHTML =
-    '<form class="start"><h2>开始一段对话</h2><p class="muted">留下称呼，我们会尽快回复你。</p><div class="field"><label for="name">怎么称呼你</label><input id="name" name="name" required maxlength="100" placeholder="你的姓名"></div><div class="field"><label for="email">邮箱（选填）</label><input id="email" name="email" type="email" placeholder="方便我们联系你"></div><p class="error" role="alert"></p><button class="primary">开始咨询 →</button></form>';
+    '<form class="start"><h2>开始一段对话</h2><p class="muted">留下邮箱，我们会尽快回复你。</p><div class="field"><label for="email">邮箱</label><input id="email" name="email" type="email" required maxlength="254" autocomplete="email" placeholder="请输入邮箱"></div><p class="error" role="alert"></p><button class="primary">开始咨询 →</button></form>';
+  if (typeof hostVisitor.email === "string")
+    root.querySelector("#email").value = hostVisitor.email;
   root.querySelector("form").onsubmit = async (e) => {
     e.preventDefault();
     const button = e.submitter;
     button.disabled = true;
     try {
-      session = await api(
-        "/start",
-        "POST",
-        Object.fromEntries(new FormData(e.target)),
-      );
+      session = await api("/start", "POST", {
+        ...hostVisitor,
+        ...Object.fromEntries(new FormData(e.target)),
+      });
+      lastVisitor = JSON.stringify(hostVisitor);
       sessionStorage.setItem(storageKey, JSON.stringify(session));
       chat();
     } catch (err) {
@@ -315,7 +337,7 @@ async function refresh() {
           m
             .map(
               (x) =>
-                `<div class="message ${x.role === "visitor" ? "agent" : ""}"><div class="bubble ${x.attachment ? "attachment-bubble" : ""}">${x.attachment ? media.render(x.attachment) : renderMessage(x.body, { plain: x.role === "visitor" })}</div><div class="small">${x.role === "visitor" ? "你" : x.source === "ai" ? "AI 助手" : x.source === "system" ? "系统" : E(x.senderName || "客服")}${x.role === "visitor" ? (x.seq <= d.receipts?.readSeq ? " · 已读" : x.seq <= d.receipts?.deliveredSeq ? " · 已送达" : " · 已发送") : ""} · ${new Date(x.created).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</div></div>`,
+                `<div class="message ${x.role === "visitor" ? "agent" : ""}"><div class="bubble ${x.attachment ? "attachment-bubble" : ""}">${x.attachment ? media.render(x.attachment) : renderMessage(x.body, { plain: x.role === "visitor" })}</div><div class="small">${x.role === "visitor" ? "你" : x.source === "ai" ? "AI 助手" : x.source === "system" ? "系统" : E(x.senderName || "客服")} · ${new Date(x.created).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}${x.role === "visitor" ? " " + receiptMarkup(x.seq, d.receipts) : ""}</div></div>`,
             )
             .join("") +
           (a.typing

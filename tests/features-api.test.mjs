@@ -341,7 +341,7 @@ test("MCP discovery and typed call, OpenAPI execution, DAG tool run and persiste
 
 test("visitor SSE receives updates and both sides persist read receipts", async () => {
   const start = await request("/widget/start", "POST", {
-      name: "实时验收访客",
+      email: "stream@example.test",
     }),
     v = start.body;
   const widget = async (path, method = "GET", data) => {

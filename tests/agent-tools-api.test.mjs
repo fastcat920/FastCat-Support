@@ -180,7 +180,9 @@ test("platform automatic reception uses the same bound tool execution path and r
   assert.equal(profile.status, 201);
   const key = profile.data.public_key;
   const visitor = (
-    await api("/widget/start?appKey=" + key, "POST", { name: "订单客户" })
+    await api("/widget/start?appKey=" + key, "POST", {
+      email: "order@example.test",
+    })
   ).data;
   const headers = { Authorization: "Bearer " + visitor.token };
   assert.equal(

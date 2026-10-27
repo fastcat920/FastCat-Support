@@ -10,7 +10,7 @@ Future<void> main(List<String> args) async {
     throw ArgumentError('This smoke creates QA data; localhost only');
   final client = FastCatClient(baseUrl: origin, appKey: args[1]);
   try {
-    await client.start(name: 'Dart 原生 SDK 验收');
+    await client.start(email: 'smoke@example.com');
     final id = FastCatClient.newClientId();
     await client.sendText('来自 Dart SDK 的咨询', clientId: id);
     final retry = await client.sendText('来自 Dart SDK 的咨询', clientId: id);

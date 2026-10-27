@@ -886,6 +886,20 @@ english[
 english["上传客服入口图标"] = "Upload launcher icon";
 english["使用默认图标"] = "Use default icon";
 english["已上传图标"] = "Icon uploaded";
+Object.assign(english, {
+  "留下邮箱，我们会尽快回复你。": "Leave your email and we will reply shortly.",
+  请输入邮箱: "Enter your email",
+  用户资料: "Customer profile",
+  联系信息: "Contact information",
+  自定义信息: "Custom information",
+  访客提供: "Provided by visitor",
+  "用户 ID": "User ID",
+  电话: "Phone",
+  公司: "Company",
+  职位: "Job title",
+  应用版本: "App version",
+  地区: "Location",
+});
 export function normalizeLanguage(value) {
   return /^en(?:-|$)/i.test(value || "") ? "en" : "zh-CN";
 }
@@ -905,6 +919,8 @@ export function translateEnglish(text) {
     );
   if ((match = text.match(/^(你|客服|AI 助手|系统) · ([0-9:]+)$/)))
     return english[match[1]] + " · " + match[2];
+  if ((match = text.match(/^(.*) · 访客提供$/)))
+    return (english[match[1]] || match[1]) + " · Provided by visitor";
   if ((match = text.match(/^版本 ([0-9.]+)$/))) return "Version " + match[1];
   if ((match = text.match(/^(\d+) 条会话$/)))
     return match[1] + " conversations";

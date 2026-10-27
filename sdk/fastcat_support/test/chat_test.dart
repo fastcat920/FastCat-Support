@@ -50,6 +50,39 @@ class FakeClient extends FastCatClient {
 }
 
 void main() {
+  testWidgets('visitor receipt appears after time and updates when read',
+      (tester) async {
+    final c = FakeClient();
+    await tester.pumpWidget(MaterialApp(
+        home: FastCatChat(client: c, locale: const Locale('zh', 'CN'))));
+    c.pages.add({
+      'messages': [
+        {
+          'id': 'sent',
+          'seq': 4,
+          'role': 'visitor',
+          'body': 'Hello',
+          'created': '2026-10-27T08:00:00Z'
+        }
+      ],
+      'nextCursor': 4,
+      'receipts': {'readSeq': 0}
+    });
+    await tester.pump();
+    expect(find.text('  ✓'), findsOneWidget);
+    c.pages.add({
+      'messages': [],
+      'nextCursor': 4,
+      'receipts': {'readSeq': 4}
+    });
+    await tester.pump();
+    expect(find.text('  ✓✓'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    unawaited(c.pages.close());
+    unawaited(c.reads.close());
+    await tester.pump();
+    c.close();
+  });
   testWidgets(
       'chat follows host English and dark mode, keeps backend accent and sends after closure',
       (tester) async {
