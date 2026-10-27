@@ -1,6 +1,6 @@
 {
   "name": "fastcat-support",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "private": true,
   "scripts": {
     "start": "node server.mjs",
