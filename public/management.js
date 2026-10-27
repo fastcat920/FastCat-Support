@@ -196,6 +196,7 @@ export function createManagementUI({
         "service.route": "自动分流",
         "service.handoff": "人工接管",
         "ai.provider.save": "模型供应商配置",
+        "ai.service.create": "创建模型服务",
         "service.settings": "更新接待设置",
         "team.hours": "更新团队工作时间",
         "handoff.assign": "分配人工接待",

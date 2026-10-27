@@ -1,6 +1,18 @@
 # 功能对齐重新核对报告
 
-核对日期：2026-10-27（Asia/Shanghai）。原审计版本：0.8.0；当前实施版本：0.19.0。
+核对日期：2026-10-27（Asia/Shanghai）。原审计版本：0.8.0；当前实施版本：0.20.0。
+
+## 0.20.0 统一模型服务创建
+
+- 参考固定版本供应商配置、添加模型和默认模型流程，将连接与模型选择放入同一个创建弹窗；供应商预设、高级协议配置、未保存连接的列表读取、搜索多选、手动填写、混合对话/Embedding 模型及默认选择均可一次完成。
+- 取消独立“供应商 / 本地模型目录”标签，统一为模型配置；每个供应商下直接展示模型，并提供追加、配置和逐模型测试。默认模型仅在统一位置管理，连接编辑不再暴露重复默认入口。
+- 调用记录合并为第二个主标签，内部包含模型调用、智能体协作和工具执行；无商店、无计费。
+- 新增事务创建接口，任一模型或默认选择无效时整体回滚；列表读取不创建供应商、模型或默认设置。密钥加密保存，不在结果中回显；管理员权限及并发默认配置版本检查保留。
+- 保留现有供应商、密钥、模型 ID、默认设置、智能体和知识库绑定。旧 provider.model/is_default 字段仍作底层兼容，未进行破坏性数据重建。
+
+124 项测试及格式检查通过。隔离浏览器已完成混合模型统一创建、创建时设置默认 Embedding、追加手动模型、连接修改留空保留密钥、对话/Embedding 逐模型测试及调用记录展示。真实供应商凭据未联调。
+
+参考：[供应商配置](https://github.com/tgoai/tgo/blob/995da4577f6f91edb87d0f56fc9ea4c129f1a4eb/repos/tgo-web/src/components/settings/ProviderConfigModal.tsx)、[添加模型](https://github.com/tgoai/tgo/blob/995da4577f6f91edb87d0f56fc9ea4c129f1a4eb/repos/tgo-web/src/components/settings/AddModelModal.tsx)。截图：[统一创建](./screenshots/v020-model-service-create.png)、[模型配置](./screenshots/v020-model-service-page.png)。
 
 ## 0.19.0 转人工分配修复
 

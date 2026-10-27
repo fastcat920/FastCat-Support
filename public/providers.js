@@ -1,3 +1,4 @@
+import { createModelPicker } from "./model-picker.js";
 import { createModelCatalogUI } from "./model-catalog.js";
 export function createProviderUI({ api, E, modal, toast }) {
   const safe = (fn) => async (e) => {
@@ -34,31 +35,46 @@ export function createProviderUI({ api, E, modal, toast }) {
   let view = "providers";
   async function render() {
     const root = document.querySelector("#view");
-    root.innerHTML = `<div class="content feature-content"><div class="page-heading"><div><h1>模型服务</h1><p>管理供应商、服务端密钥与模型用量。</p></div><button class="primary" id="new-provider">＋ 添加供应商</button></div><div class="tabs"><button data-model-view="providers">供应商</button><button data-model-view="models">本地模型目录</button><button data-model-view="usage">调用记录</button><button data-model-view="collaboration">智能体协作记录</button><button data-model-view="tool-calls">工具执行记录</button></div><div id="model-content"></div></div>`;
-    root.querySelector("#new-provider").onclick = () => edit();
+    root.innerHTML = `<div class="content feature-content"><div class="page-heading"><div><h1>模型服务</h1><p>配置模型连接，选择对话与 Embedding 模型。</p></div>${view === "providers" ? '<button class="primary" id="new-provider">＋ 添加模型服务</button>' : ""}</div><div class="tabs"><button data-model-view="providers">模型配置</button><button data-model-view="records">调用记录</button></div>${view !== "providers" ? '<div class="management-tabs"><button data-record-view="usage">模型调用</button><button data-record-view="collaboration">智能体协作</button><button data-record-view="tool-calls">工具执行</button></div>' : ""}<div id="model-content"></div></div>`;
+    root
+      .querySelector("#new-provider")
+      ?.addEventListener("click", safe(create));
     root.querySelectorAll("[data-model-view]").forEach((b) => {
-      b.classList.toggle("active", b.dataset.modelView === view);
+      b.classList.toggle(
+        "active",
+        b.dataset.modelView === "providers"
+          ? view === "providers"
+          : view !== "providers",
+      );
       b.onclick = safe(async () => {
-        view = b.dataset.modelView;
+        view = b.dataset.modelView === "records" ? "usage" : "providers";
+        await render();
+      });
+    });
+    root.querySelectorAll("[data-record-view]").forEach((b) => {
+      b.classList.toggle("active", b.dataset.recordView === view);
+      b.onclick = safe(async () => {
+        view = b.dataset.recordView;
         await render();
       });
     });
     const target = root.querySelector("#model-content");
-    if (view === "models") await modelCatalogUI.render(target);
     if (view === "providers") {
+      const [rows, models, d] = await Promise.all([
+        api("/ai/providers"),
+        api("/ai/models"),
+        api("/ai/defaults"),
+      ]);
       const defaults = document.createElement("div");
       target.before(defaults);
-      await modelCatalogUI.renderDefaults(defaults, render);
-      const rows = await api("/ai/providers");
-      target.innerHTML = `<p class="small">支持 Chat Completions 与原生 Anthropic Messages。密钥加密保存在服务端，也可引用 FC_SECRET_ 环境变量；留空不会覆盖原密钥。未设置默认供应商时沿用服务器默认连接。</p><div class="grid">${rows.map((r) => `<article class="card"><div class="row"><span class="badge neutral">${r.protocol === "anthropic" ? "Anthropic Messages" : "Chat Completions"}</span>${r.is_default ? '<span class="badge success">默认</span>' : ""}</div><h3>${E(r.name)}</h3><p>${E(r.model)}</p><p class="small">${E(r.endpoint)}</p><p class="small">${r.enabled ? "启用" : "停用"} · ${r.keyConfigured ? "密钥已配置" : "缺少密钥"}</p><div class="row"><button data-add-provider-model="${r.id}">添加模型</button><button data-edit-provider="${r.id}">配置</button><button data-test-provider="${r.id}">测试连接</button></div></article>`).join("")}</div>${rows.length ? "" : "<p>尚未添加供应商。已有 AI_BASE_URL / AI_API_KEY / AI_MODEL 可继续使用。</p>"}`;
+      await modelCatalogUI.renderDefaults(defaults, render, {
+        defaults: d,
+        models,
+      });
+      target.innerHTML = `<div class="provider-services">${rows.map((r) => `<article class="panel provider-service"><header class="panel-head"><div><h2>${E(r.name)}</h2><p class="small">${E(r.endpoint)}</p></div><div class="row"><span class="badge neutral">${r.protocol === "anthropic" ? "Anthropic Messages" : "Chat Completions"}</span><span class="badge ${r.enabled && r.keyConfigured ? "success" : "neutral"}">${!r.enabled ? "已停用" : r.keyConfigured ? "密钥已配置" : "待配置密钥"}</span><button type="button" data-edit-provider="${r.id}">连接配置</button></div></header><div data-provider-models="${r.id}"></div></article>`).join("")}</div>${rows.length ? "" : '<section class="panel empty"><strong>添加第一个模型服务</strong><p>配置连接并选择模型，一次保存后即可用于智能体和知识库。</p><button type="button" id="empty-add-provider" class="primary">添加模型服务</button></section>'}`;
       target
-        .querySelectorAll("[data-add-provider-model]")
-        .forEach(
-          (b) =>
-            (b.onclick = safe(() =>
-              modelCatalogUI.add(b.dataset.addProviderModel, render),
-            )),
-        );
+        .querySelector("#empty-add-provider")
+        ?.addEventListener("click", safe(create));
       target
         .querySelectorAll("[data-edit-provider]")
         .forEach(
@@ -66,20 +82,13 @@ export function createProviderUI({ api, E, modal, toast }) {
             (b.onclick = () =>
               edit(rows.find((r) => r.id === b.dataset.editProvider))),
         );
-      target.querySelectorAll("[data-test-provider]").forEach(
-        (b) =>
-          (b.onclick = safe(async () => {
-            b.disabled = true;
-            try {
-              await api("/ai/providers/" + b.dataset.testProvider + "/test", {
-                method: "POST",
-              });
-              toast("连接测试成功，用量已记录");
-            } finally {
-              b.disabled = false;
-            }
-          })),
-      );
+      for (const el of target.querySelectorAll("[data-provider-models]"))
+        await modelCatalogUI.render(el, {
+          providerId: el.dataset.providerModels,
+          providers: rows,
+          models,
+          onSaved: render,
+        });
     }
     if (view === "usage") {
       target.innerHTML =
@@ -140,60 +149,77 @@ export function createProviderUI({ api, E, modal, toast }) {
       target.innerHTML = `<p class="small">仅展示内部成员意见与运行状态，不向访客开放。每次最多 4 位成员、3 轮讨论，然后由主智能体汇总。</p>${rows.map((r) => `<details class="panel"><summary>${new Date(r.created).toLocaleString("zh-CN")} · ${E(statusName(r.status))} · ${r.steps.length} 条成员意见</summary>${r.error ? `<p class="error">${E(r.error)}</p>` : ""}${r.steps.map((s) => `<article><h3>第 ${s.round} 轮 · ${E(s.name)}</h3><pre class="code">${E(s.output)}</pre></article>`).join("")}</details>`).join("") || "<p>还没有协作记录。</p>"}`;
     }
   }
-  function edit(r) {
-    const input = (name, label, value = "", type = "text") =>
-      `<div class="field"><label for="p-${name}">${label}</label><input id="p-${name}" name="${name}" type="${type}" value="${E(value ?? "")}"></div>`;
+  const presets = {
+    openai: ["OpenAI", "https://api.openai.com/v1", "openai"],
+    deepseek: ["DeepSeek", "https://api.deepseek.com/v1", "openai"],
+    qwen: [
+      "通义千问",
+      "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "openai",
+    ],
+    moonshot: ["月之暗面", "https://api.moonshot.cn/v1", "openai"],
+    baichuan: ["百川智能", "https://api.baichuan-ai.com/v1", "openai"],
+    ollama: ["Ollama", "http://localhost:11434/v1", "openai"],
+    anthropic: ["Anthropic", "https://api.anthropic.com/v1", "anthropic"],
+  };
+  const input = (name, label, value = "", type = "text") =>
+    `<div class="field"><label>${label}<input name="${name}" type="${type}" value="${E(value ?? "")}"></label></div>`;
+  const presetOptions = () =>
+    '<option value="custom">自定义兼容接口</option>' +
+    Object.entries(presets)
+      .map(([id, p]) => `<option value="${id}">${p[0]}</option>`)
+      .join("");
+  async function create() {
+    const defaults = await api("/ai/defaults");
+    let picker;
     const o = modal(
-      r ? "配置供应商" : "添加供应商",
-      `<div class="field"><label for="provider-preset">供应商类型</label><select id="provider-preset"><option value="custom">自定义兼容接口</option><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="qwen">通义千问</option><option value="moonshot">月之暗面</option><option value="baichuan">百川智能</option><option value="ollama">Ollama（兼容接口）</option><option value="anthropic">Anthropic</option></select></div>${input("name", "名称", r?.name)}${input("key", "设置/替换密钥（留空保留）", "", "password")}<details><summary>高级设置：接口与协议</summary><div class="field"><label for="p-protocol">协议</label><select id="p-protocol" name="protocol"><option value="openai">Chat Completions</option><option value="anthropic">Anthropic Messages</option></select></div>${input("endpoint", "接口基础地址（包含 /v1）", r?.endpoint, "url")}${input("model", "默认对话模型（仅用 embedding 可留空）", r?.model)}${input("keyEnv", "密钥环境变量（优先于加密密钥）", r?.key_env)}<label class="row"><input type="checkbox" name="clearKey">清除已保存的加密密钥</label><p class="small">当前：${r?.keyConfigured ? "密钥已配置" : "尚未配置密钥"}。密钥仅提交到服务端，保存后不回显。</p><label class="row"><input type="checkbox" name="enabled" ${r?.enabled !== false ? "checked" : ""}>启用供应商</label><label class="row"><input type="checkbox" name="isDefault" ${r?.is_default ? "checked" : ""}>作为默认供应商</label><label class="row"><input type="checkbox" name="includeUsage" ${r?.include_usage !== 0 ? "checked" : ""}>请求流式用量（兼容接口可关闭）</label>${input("maxTokens", "Anthropic 输出 token 上限", r?.max_tokens || 2048, "number")}</details>`,
-      r ? "保存" : "保存并添加模型",
+      "添加模型服务",
+      `<section><h3>连接供应商</h3><div class="service-form-grid"><label>供应商类型<select id="provider-preset">${presetOptions()}</select></label>${input("name", "显示名称", "OpenAI")}</div><div class="field"><label>API 密钥<input type="password" name="key" autocomplete="new-password" placeholder="输入供应商提供的密钥"></label></div><details><summary>高级连接设置</summary>${input("endpoint", "接口基础地址（包含 /v1）", "https://api.openai.com/v1", "url")}<label>协议<select name="protocol"><option value="openai">Chat Completions</option><option value="anthropic">Anthropic Messages</option></select></label>${input("keyEnv", "密钥环境变量（可替代手动密钥）")}<label><input name="includeUsage" type="checkbox" checked>请求流式用量</label>${input("maxTokens", "Anthropic 输出 token 上限", 2048, "number")}</details></section><div data-create-model-picker></div><p class="small">取消不会保存供应商或模型。密钥保存后不回显；读取失败可直接手动添加。</p>`,
+      "保存模型服务",
       async (b) => {
-        const payload = {
-          name: b.name,
-          protocol: b.protocol,
-          endpoint: b.endpoint,
-          model: b.model,
-          keyEnv: b.keyEnv,
-          enabled: !!b.enabled,
-          isDefault: !!b.isDefault,
-          includeUsage: !!b.includeUsage,
-          clearKey: !!b.clearKey,
-          maxTokens: Number(b.maxTokens),
-          expectedRevision: r?.revision,
-          ...(b.key ? { key: b.key } : {}),
-        };
-        const saved = await api(r ? "/ai/providers/" + r.id : "/ai/providers", {
-          method: r ? "PUT" : "POST",
-          body: JSON.stringify(payload),
+        const models = picker.models();
+        if (!models.length) throw Error("请至少选择或手动添加一个模型");
+        if (!b.name.trim()) throw Error("请填写显示名称");
+        if (!b.key && !b.keyEnv) throw Error("请填写密钥或密钥环境变量");
+        await api("/ai/services", {
+          method: "POST",
+          body: JSON.stringify({
+            provider: {
+              name: b.name,
+              protocol: b.protocol,
+              endpoint: b.endpoint,
+              keyEnv: b.keyEnv,
+              ...(b.key ? { key: b.key } : {}),
+              enabled: true,
+              includeUsage: !!b.includeUsage,
+              maxTokens: Number(b.maxTokens),
+            },
+            models,
+            defaults: picker.defaults(),
+            expectedDefaultsRevision: defaults.revision,
+          }),
         });
-        toast("供应商已保存");
+        toast(`已添加模型服务及 ${models.length} 个模型`);
         view = "providers";
         await render();
-        if (!r)
-          setTimeout(
-            () =>
-              modelCatalogUI
-                .add(saved.id, render)
-                .catch((e) => toast(e.message)),
-            0,
-          );
       },
     );
-    const presets = {
-      openai: ["OpenAI", "https://api.openai.com/v1", "openai"],
-      deepseek: ["DeepSeek", "https://api.deepseek.com/v1", "openai"],
-      qwen: [
-        "通义千问",
-        "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "openai",
-      ],
-      moonshot: ["月之暗面", "https://api.moonshot.cn/v1", "openai"],
-      baichuan: ["百川智能", "https://api.baichuan-ai.com/v1", "openai"],
-      ollama: ["Ollama", "http://localhost:11434/v1", "openai"],
-      anthropic: ["Anthropic", "https://api.anthropic.com/v1", "anthropic"],
-    };
+    o.querySelector(".modal").classList.add("model-service-modal");
+    const connection = () =>
+      Object.fromEntries(new FormData(o.querySelector("form")));
+    picker = createModelPicker({
+      target: o.querySelector("[data-create-model-picker]"),
+      E,
+      withDefaults: true,
+      autoChatDefault: !defaults.chat_id,
+      discover: () =>
+        api("/ai/providers/preview-models", {
+          method: "POST",
+          body: JSON.stringify(connection()),
+        }),
+    });
     const preset = o.querySelector("#provider-preset");
-    preset.value = r ? "custom" : "openai";
+    preset.value = "openai";
     preset.onchange = () => {
       const p = presets[preset.value];
       if (p) {
@@ -201,10 +227,46 @@ export function createProviderUI({ api, E, modal, toast }) {
         o.querySelector("[name=endpoint]").value = p[1];
         o.querySelector("[name=protocol]").value = p[2];
       }
+      picker.invalidate();
+      if (preset.value === "custom") {
+        o.querySelector("details").open = true;
+        o.querySelector("[name=endpoint]").focus();
+      }
     };
-    if (!r) preset.onchange();
-    o.querySelector("#p-protocol").value = r?.protocol || "openai";
-    o.querySelector('[name="key"]').autocomplete = "new-password";
+    for (const name of ["endpoint", "protocol", "key", "keyEnv"])
+      o.querySelector(`[name="${name}"]`).addEventListener("input", () =>
+        picker.invalidate(),
+      );
+  }
+  function edit(r) {
+    const o = modal(
+      "连接配置 · " + r.name,
+      `${input("name", "显示名称", r.name)}${input("key", "替换密钥（留空保留）", "", "password")}<details><summary>高级连接设置</summary>${input("endpoint", "接口基础地址（包含 /v1）", r.endpoint, "url")}<label>协议<select name="protocol"><option value="openai">Chat Completions</option><option value="anthropic">Anthropic Messages</option></select></label>${input("keyEnv", "密钥环境变量", r.key_env)}<label><input type="checkbox" name="clearKey">清除已保存的加密密钥</label><label><input type="checkbox" name="enabled" ${r.enabled ? "checked" : ""}>启用供应商</label><label><input type="checkbox" name="includeUsage" ${r.include_usage !== 0 ? "checked" : ""}>请求流式用量</label>${input("maxTokens", "Anthropic 输出 token 上限", r.max_tokens || 2048, "number")}</details><p class="small">连接配置由该供应商下所有模型共用。默认模型请在页面顶部统一设置。</p>`,
+      "保存连接",
+      async (b) => {
+        await api("/ai/providers/" + r.id, {
+          method: "PUT",
+          body: JSON.stringify({
+            name: b.name,
+            protocol: b.protocol,
+            endpoint: b.endpoint,
+            model: r.model,
+            keyEnv: b.keyEnv,
+            enabled: !!b.enabled,
+            isDefault: r.is_default,
+            includeUsage: !!b.includeUsage,
+            clearKey: !!b.clearKey,
+            maxTokens: Number(b.maxTokens),
+            expectedRevision: r.revision,
+            ...(b.key ? { key: b.key } : {}),
+          }),
+        });
+        toast("连接配置已保存");
+        await render();
+      },
+    );
+    o.querySelector("[name=protocol]").value = r.protocol;
+    o.querySelector("[name=key]").autocomplete = "new-password";
   }
   return { render };
 }

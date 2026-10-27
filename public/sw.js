@@ -1,4 +1,4 @@
-const CACHE = "fastcat-shell-v019";
+const CACHE = "fastcat-shell-v020";
 const FILES = [
   "/",
   "/widget",
@@ -26,6 +26,7 @@ const FILES = [
   "/outbox.js",
   "/providers.js",
   "/model-catalog.js",
+  "/model-picker.js",
   "/retrieval.js",
   "/access.js",
   "/embed.js",

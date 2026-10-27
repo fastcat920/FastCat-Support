@@ -3524,3 +3524,77 @@ label:has(> input:is([type="checkbox"], [type="radio"])) {
     padding: 10px 5px;
   }
 }
+
+.provider-services {
+  display: grid;
+  gap: 20px;
+  margin-top: 24px;
+}
+.provider-service .panel-head {
+  gap: 18px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.provider-service .panel-head h2 {
+  margin: 0 0 8px;
+  font-size: 19px;
+}
+.provider-service .panel-head p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.provider-service .table td {
+  vertical-align: middle;
+}
+.provider-service .table td:last-child {
+  white-space: nowrap;
+}
+.provider-service .table td:last-child button + button {
+  margin-left: 6px;
+}
+.model-service-modal {
+  width: min(760px, 96vw);
+}
+.model-picker {
+  border-top: 1px solid var(--line);
+  margin-top: 22px;
+  padding-top: 16px;
+}
+.model-picker .service-form-grid {
+  margin-top: 16px;
+}
+.model-manual {
+  align-items: flex-end;
+  margin: 16px 0;
+}
+.model-manual > label {
+  flex: 1;
+  min-width: 180px;
+}
+.model-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 18px;
+}
+.model-selected > p {
+  flex-basis: 100%;
+  margin: 0 0 6px;
+}
+.model-selected > button {
+  font-size: 12px;
+  padding: 6px 9px;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.model-picker .model-choices:empty {
+  display: none;
+}
+@media (max-width: 640px) {
+  .model-manual {
+    flex-wrap: wrap;
+  }
+  .provider-service {
+    padding: 16px;
+  }
+}
