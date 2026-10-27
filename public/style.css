@@ -3073,6 +3073,14 @@ label:has(> input:is([type="checkbox"], [type="radio"])) {
   padding: 18px;
   border-bottom: 1px solid var(--line);
 }
+.platform-list > header .small {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+.platform-list > header #access-create {
+  padding: 8px 10px;
+  font-size: 12px;
+}
 .platform-list h2 {
   font-size: 16px;
   margin: 0;
