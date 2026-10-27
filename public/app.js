@@ -643,16 +643,17 @@ async function resourceModal(kind, existing) {
     toolOptions = [],
     modelOptions = [];
   const toolBindings = structuredClone(existing?.config.toolBindings || []);
-  if (kind === "agent") {
+  if (["agent", "model"].includes(kind)) {
     try {
-      [collections, providerOptions, agentOptions, toolOptions, modelOptions] =
-        await Promise.all([
-          api("/knowledge/collections"),
-          api("/ai/providers"),
-          api("/resources?kind=agent"),
-          api("/resources?kind=tool"),
-          api("/ai/models"),
-        ]);
+      providerOptions = await api("/ai/providers");
+      if (kind === "agent")
+        [collections, agentOptions, toolOptions, modelOptions] =
+          await Promise.all([
+            api("/knowledge/collections"),
+            api("/resources?kind=agent"),
+            api("/resources?kind=tool"),
+            api("/ai/models"),
+          ]);
     } catch (e) {
       return toast(e.message);
     }
@@ -667,14 +668,23 @@ async function resourceModal(kind, existing) {
   }[kind];
   const overlay = modal(
     existing ? "编辑" + titles[kind] : details[kind][2],
-    `${field("name", "名称", "给它起一个便于识别的名称")}<div class="field"><label for="description">${fields[0]}</label><textarea id="description" name="description" placeholder="${fields[1]}" required></textarea></div>${
+    `${field("name", "名称", "给它起一个便于识别的名称", "text", existing?.name || "")}<div class="field"><label for="description">${fields[0]}</label><textarea id="description" name="description" placeholder="${fields[1]}" required>${E(existing?.description || "")}</textarea></div>${
       kind === "model"
-        ? field(
+        ? `<div class="field"><label for="providerId">供应商</label><select name="providerId" id="providerId"><option value="">请选择供应商</option>${providerOptions.map((p) => `<option value="${p.id}" ${p.id === existing?.config.providerId ? "selected" : ""}>${E(p.name)} · ${E(p.model || "兼容接口")}</option>`).join("")}</select></div>` +
+          field(
             "endpoint",
             "兼容接口地址",
             "https://api.example.com/v1",
             "url",
-          ) + field("model", "模型标识", "provider/model")
+            existing?.config.endpoint || "",
+          ) +
+          field(
+            "model",
+            "模型标识",
+            "provider/model",
+            "text",
+            existing?.config.model || "",
+          )
         : kind === "tool"
           ? field(
               "endpoint",
