@@ -29,7 +29,6 @@ export function createInboxUI({
     filter: {
       status: "open",
       assignee: "all",
-      priority: "all",
       unread: false,
       q: "",
     },
@@ -163,7 +162,7 @@ export function createInboxUI({
       state.selected.clear();
       try {
         const f = JSON.parse(localStorage.getItem("fc_inbox_" + me.id) || "{}");
-        for (const key of ["status", "assignee", "priority", "unread"])
+        for (const key of ["status", "assignee", "unread"])
           if (Object.hasOwn(f, key)) state.filter[key] = f[key];
       } catch {}
     }
@@ -193,7 +192,7 @@ export function createInboxUI({
         .map((m) => `<option value="${m.id}">${E(m.name)}</option>`)
         .join(
           "",
-        )}</select></div><div class="filter-pair"><div class="field"><label for="priority-filter">优先级</label><select id="priority-filter"><option value="all">全部优先级</option>${Object.entries(
+        )}</select></div><div class="filter-pair" hidden><div class="field"><label for="priority-filter">优先级</label><select id="priority-filter"><option value="all">全部优先级</option>${Object.entries(
         priorityNames,
       )
         .map(
@@ -204,6 +203,13 @@ export function createInboxUI({
           "",
         )}</select></div></div><div class="row"><label class="small row"><input class="switch" type="checkbox" id="unread-filter" ${state.filter.unread ? "checked" : ""}>仅未读</label><button class="quiet small" id="reset-filters">重置筛选</button></div></details></div><div class="selection-toolbar"><label class="small row"><input type="checkbox" class="switch" id="select-page" aria-label="全选当前页">当前页</label><span class="small" id="selected-count">未选择</span><button id="bulk-manage" class="quiet small" disabled>批量处理</button></div><div id="conversations"></div><div class="queue-pagination"><button id="prev-page" aria-label="上一页">←</button><span id="page-info" class="small"></span><button id="next-page" aria-label="下一页">→</button></div></section><section class="chat" id="chat"></section><aside class="visitor-panel" id="visitor-panel"></aside></div>`;
     document.querySelector("#owner-filter").value = state.filter.assignee;
+    for (const id of [
+      "priority-filter",
+      "bulk-priority",
+      "visitor-priority",
+      "dialog-priority",
+    ])
+      document.getElementById(id)?.closest(".field")?.remove();
     document
       .querySelectorAll("[data-scope]")
       .forEach(
@@ -214,10 +220,7 @@ export function createInboxUI({
       .forEach(
         (b) => (b.onclick = () => setFilter("status", b.dataset.status)),
       );
-    for (const [id, key] of [
-      ["owner-filter", "assignee"],
-      ["priority-filter", "priority"],
-    ])
+    for (const [id, key] of [["owner-filter", "assignee"]])
       document.getElementById(id).onchange = (e) =>
         setFilter(key, e.target.value);
     document.querySelector("#unread-filter").onchange = (e) =>
@@ -235,7 +238,6 @@ export function createInboxUI({
       state.filter = {
         status: "open",
         assignee: "all",
-        priority: "all",
         unread: false,
         q: "",
       };
@@ -359,8 +361,7 @@ export function createInboxUI({
         (s) => (s.textContent = state.counts[s.dataset.statusCount] || 0),
       );
     document.querySelector("#active-filter-count").textContent =
-      [state.filter.priority !== "all", state.filter.unread].filter(Boolean)
-        .length || "";
+      [state.filter.unread].filter(Boolean).length || "";
     document.querySelector("#conversations").innerHTML = state.items.length
       ? state.items
           .map(
@@ -574,6 +575,7 @@ export function createInboxUI({
             conversationId: id,
             body: text,
             internal: note,
+            direct: true,
           });
           drafts.delete(id);
           if (state.active === id) {

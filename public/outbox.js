@@ -45,6 +45,11 @@ export function createOutbox({
   }
   async function enqueue(message) {
     if (closed) throw Error("待发队列已关闭");
+    if (message.direct) {
+      const id = message.id || randomId();
+      await send({ ...message, id, owner });
+      return id;
+    }
     const rows = await list();
     if (closed) throw Error("身份已变化，未保存待发消息");
     if (

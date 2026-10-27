@@ -344,7 +344,7 @@ function updateAgentMenu() {
   );
 }
 function shell() {
-  app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="mark">F</span><span class="brand-text">FastCat<span style="font-weight:400"> Support</span></span></div><div class="nav-label">工作空间</div><nav class="nav">${navigationMarkup()}</nav><div class="sidebar-foot"><div class="row"><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div><div class="small">${E(me.name)}<br>${me.role === "admin" ? "管理员" : "客服"}</div></div><button id="logout" class="quiet small">退出登录</button></div></aside><main><header class="topbar"><strong id="breadcrumb"></strong><div class="right"><button id="global-search-button" class="search-launcher" aria-label="搜索与快速跳转"><span>搜索工作空间</span><kbd>⌘ K</kbd></button><button id="theme-toggle" class="quiet" aria-label="切换主题" title="切换明暗主题">◐</button><select id="own-availability" class="presence-select" aria-label="我的接待状态"><option value="available">在线</option><option value="away">忙碌</option><option value="offline">离线</option></select><button id="open-widget" class="quiet">↗ 访客端预览</button><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div></div></header><div id="view"></div></main></div>`;
+  app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="mark">F</span><span class="brand-text">FastCat<span style="font-weight:400"> Support</span></span></div><div class="nav-label">工作空间</div><nav class="nav">${navigationMarkup()}</nav><div class="sidebar-foot"><div class="row"><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div><div class="small">${E(me.name)}<br>${me.role === "admin" ? "管理员" : "客服"}</div></div><button id="logout" class="quiet small">退出登录</button></div></aside><main><header class="topbar"><strong id="breadcrumb"></strong><div class="right"><button id="global-search-button" class="search-launcher" aria-label="搜索与快速跳转"><span>搜索工作空间</span><kbd>⌘ K</kbd></button><button id="theme-toggle" class="quiet" aria-label="切换主题" title="切换明暗主题">◐</button><select id="own-availability" class="presence-select" aria-label="我的接待状态"><option value="available">在线</option><option value="away">忙碌</option><option value="offline">离线</option></select><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div></div></header><div id="view"></div></main></div>`;
   app
     .querySelectorAll("[data-page]")
     .forEach((b) => (b.onclick = () => navigate(b.dataset.page)));
@@ -398,8 +398,6 @@ function shell() {
     events?.close();
     boot();
   });
-  document.querySelector("#open-widget").onclick = () =>
-    window.open("/widget", "_blank", "noopener");
 }
 function navigate(p) {
   query = "";

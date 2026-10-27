@@ -241,7 +241,7 @@ function chat() {
   bindComposer(root.querySelector("form"));
   document.querySelector("#widget-sound").onclick = (e) => {
     const enabled = messageSound.toggle();
-    e.currentTarget.textContent = enabled ? "♪" : "♪̸";
+    e.currentTarget.textContent = enabled ? "🔔" : "🔕";
     e.currentTarget.setAttribute(
       "aria-label",
       enabled ? "声音：开" : "声音：关",
@@ -260,7 +260,11 @@ function chat() {
     if (!text) return;
     sending = true;
     try {
-      await outbox.enqueue({ conversationId: session.id, body: text });
+      await outbox.enqueue({
+        conversationId: session.id,
+        body: text,
+        direct: true,
+      });
       form.body.value = "";
       form.body.dispatchEvent(new Event("input", { bubbles: true }));
     } catch (err) {

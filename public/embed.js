@@ -45,6 +45,7 @@
     unavailable = false,
     opened = false,
     loading = false;
+  box.style.visibility = "hidden";
   const systemTheme = matchMedia("(prefers-color-scheme: dark)");
   const host = () => {
     const html = document.documentElement,
@@ -196,6 +197,7 @@
     } finally {
       clearTimeout(timeout);
       loading = false;
+      box.style.visibility = "visible";
       sync();
     }
   };

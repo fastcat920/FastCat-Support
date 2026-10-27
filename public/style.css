@@ -3783,6 +3783,12 @@ label:has(> input:is([type="checkbox"], [type="radio"])) {
 .composer-mode:focus-within {
   outline: 2px solid var(--brand);
 }
+.field:has(> #visitor-priority),
+.field:has(> #dialog-priority),
+.field:has(> #bulk-priority),
+.field:has(> #priority-filter) {
+  display: none !important;
+}
 .widget-header-meta {
   gap: 8px;
 }
