@@ -1,3 +1,4 @@
+import { setLanguage, observeLanguage, t } from "./i18n.js";
 export function notificationDecision(
   item,
   prefs,
@@ -20,6 +21,7 @@ export function createNotifications({
   openConversation,
   toast,
 }) {
+  observeLanguage();
   let prefs = {},
     cursor = 0,
     busy = false,
@@ -31,6 +33,23 @@ export function createNotifications({
   const permission = () =>
     supported() ? Notification.permission : "unsupported";
   const applyTheme = (theme) => {
+    setLanguage(prefs.language || "zh-CN");
+    if (/^#[0-9a-f]{6}$/i.test(prefs.themeColor || "")) {
+      document.documentElement.style.setProperty("--brand", prefs.themeColor);
+      document.documentElement.style.setProperty(
+        "--brand-soft",
+        "color-mix(in srgb, var(--brand) 12%, var(--surface))",
+      );
+      const rgb = [1, 3, 5]
+        .map((i) => parseInt(prefs.themeColor.slice(i, i + 2), 16) / 255)
+        .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      document.documentElement.style.setProperty(
+        "--brand-fg",
+        0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 0.179
+          ? "#000"
+          : "#fff",
+      );
+    }
     localStorage.setItem("fc_theme", theme);
     document.documentElement.dataset.theme =
       theme === "system"
@@ -88,7 +107,7 @@ export function createNotifications({
     if (!prefs.notificationEnabled || permission() !== "granted") return false;
     try {
       const n = new Notification(
-        test ? "测试通知" : item.newVisitor ? "新访客咨询" : "收到访客消息",
+        t(test ? "测试通知" : item.newVisitor ? "新访客咨询" : "收到访客消息"),
         {
           body: test
             ? "通知连接正常"

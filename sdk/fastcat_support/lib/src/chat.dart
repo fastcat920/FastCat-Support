@@ -1,3 +1,4 @@
+import 'strings.dart';
 import 'message_body.dart';
 import 'dart:async';
 import 'dart:typed_data';
@@ -13,14 +14,16 @@ class FastCatAttachment {
 /// Mount after start/restore. The host owns the client and session lifetime.
 class FastCatChat extends StatefulWidget {
   final FastCatClient client;
-  final String title;
+  final String? title;
+  final Locale? locale;
   final ValueChanged<Uri>? onOpenLink;
   final Future<FastCatAttachment?> Function()? pickAttachment;
   final Future<void> Function(String filename, Uint8List bytes)? onAttachment;
   const FastCatChat(
       {super.key,
       required this.client,
-      this.title = '在线客服',
+      this.title,
+      this.locale,
       this.onOpenLink,
       this.pickAttachment,
       this.onAttachment});
@@ -113,8 +116,11 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
     }
   }
 
+  String _t(String zh, String en) =>
+      supportText(context, zh, en, widget.locale);
+
   Future<void> _send() async {
-    if (_sending || _closed) return;
+    if (_sending) return;
     final body = _pendingBody ?? _text.text.trim();
     if (body.isEmpty && _pendingFile == null) return;
     setState(() {
@@ -137,7 +143,9 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
       _pendingBody = null;
       _pendingId = null;
     } catch (e) {
-      if (mounted) setState(() => _error = '发送未完成，请重试：$e');
+      if (mounted)
+        setState(() =>
+            _error = '${_t('发送未完成，请重试', 'Send failed, please retry')}: $e');
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -154,7 +162,8 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(title: Text(widget.title), actions: [
+      appBar:
+          AppBar(title: Text(widget.title ?? _t('在线客服', 'Support')), actions: [
         TextButton(
             onPressed: _closed
                 ? null
@@ -165,7 +174,7 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
                       if (mounted) setState(() => _error = e.toString());
                     }
                   },
-            child: const Text('联系人工'))
+            child: Text(_t('联系人工', 'Talk to a person')))
       ]),
       body: SafeArea(
           child: Column(children: [
@@ -174,8 +183,8 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
           Padding(
               padding: const EdgeInsets.all(8),
               child: Text(_connection == FastCatConnectionStatus.connecting
-                  ? '正在连接客服…'
-                  : '连接中断，正在重试…')),
+                  ? _t('正在连接客服…', 'Connecting to support…')
+                  : _t('连接中断，正在重试…', 'Connection lost. Retrying…'))),
         Expanded(
             child: ListView.builder(
                 itemCount: _messages.length + (_typing ? 1 : 0),
@@ -183,12 +192,13 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
                   if (i == _messages.length)
                     return Semantics(
                         liveRegion: true,
-                        label: "AI 正在回复",
+                        label: _t("AI 正在回复", "AI is replying"),
                         child: Card(
                             child: Padding(
                                 padding: const EdgeInsets.all(12),
-                                child: Text(
-                                    _aiDraft.isEmpty ? "正在思考…" : _aiDraft))));
+                                child: Text(_aiDraft.isEmpty
+                                    ? _t("正在思考…", "Thinking…")
+                                    : _aiDraft))));
                   final m = _messages[i];
                   return Align(
                       alignment: m['role'] == 'visitor'
@@ -219,10 +229,11 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
                                               }
                                             },
                                       child: Text(
-                                          '附件：${(m['attachment'] as Map)['filename']}'))
+                                          '${_t('附件', 'Attachment')}: ${(m['attachment'] as Map)['filename']}'))
                                   : FastCatMessageBody(
                                       body: m['body'] as String? ?? '',
                                       plain: m['role'] == 'visitor',
+                                      locale: widget.locale,
                                       onOpenLink: widget.onOpenLink,
                                       onMessage: (value) => setState(
                                           () => _text.text = value)))));
@@ -233,14 +244,16 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
               child: Text(_error!,
                   style:
                       TextStyle(color: Theme.of(context).colorScheme.error))),
-        if (_closed) const Text('会话已结束'),
+        if (_closed)
+          Text(_t('会话已结束，发送消息即可继续咨询。',
+              'Conversation closed. Send a message to continue.')),
         Padding(
             padding: const EdgeInsets.all(8),
             child: Row(children: [
               if (widget.pickAttachment != null)
                 IconButton(
-                    tooltip: '发送附件',
-                    onPressed: _sending || _pendingId != null || _closed
+                    tooltip: _t('发送附件', 'Send attachment'),
+                    onPressed: _sending || _pendingId != null
                         ? null
                         : () async {
                             try {
@@ -257,15 +270,17 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
               Expanded(
                   child: TextField(
                       controller: _text,
-                      readOnly: _sending || _pendingBody != null || _closed,
+                      readOnly: _sending || _pendingBody != null,
                       maxLength: 10000,
                       minLines: 1,
                       maxLines: 4,
-                      decoration: const InputDecoration(
-                          labelText: '消息内容', counterText: ''))),
+                      decoration: InputDecoration(
+                          labelText: _t('消息内容', 'Message'), counterText: ''))),
               IconButton(
-                  tooltip: _pendingId != null ? '重试发送' : '发送',
-                  onPressed: _sending || _closed ? null : _send,
+                  tooltip: _pendingId != null
+                      ? _t('重试发送', 'Retry send')
+                      : _t('发送', 'Send'),
+                  onPressed: _sending ? null : _send,
                   icon: Icon(_pendingId != null ? Icons.refresh : Icons.send))
             ]))
       ])));

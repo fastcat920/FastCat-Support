@@ -1,3 +1,4 @@
+import 'strings.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -6,12 +7,14 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 class FastCatMessageBody extends StatefulWidget {
   final String body;
   final bool plain;
+  final Locale? locale;
   final ValueChanged<String>? onMessage;
   final ValueChanged<Uri>? onOpenLink;
   const FastCatMessageBody(
       {super.key,
       required this.body,
       this.plain = false,
+      this.locale,
       this.onMessage,
       this.onOpenLink});
   @override
@@ -20,6 +23,8 @@ class FastCatMessageBody extends StatefulWidget {
 
 class _FastCatMessageBodyState extends State<FastCatMessageBody> {
   final values = <String, String>{};
+  String _t(String zh, String en) =>
+      supportText(context, zh, en, widget.locale);
   @override
   void didUpdateWidget(covariant FastCatMessageBody oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -52,11 +57,12 @@ class _FastCatMessageBodyState extends State<FastCatMessageBody> {
       },
       imageBuilder: (uri, title, alt) {
         if (!['http', 'https'].contains(uri.scheme))
-          return Text(alt ?? '图片不可用');
+          return Text(alt ?? _t('图片不可用', 'Image unavailable'));
         return Image.network(uri.toString(),
             height: 180,
             fit: BoxFit.contain,
-            errorBuilder: (c, e, s) => Text(alt ?? '图片加载失败'));
+            errorBuilder: (c, e, s) =>
+                Text(alt ?? _t('图片加载失败', 'Image failed to load')));
       });
   @override
   Widget build(BuildContext context) {
@@ -94,13 +100,15 @@ class _FastCatMessageBodyState extends State<FastCatMessageBody> {
                       width: 120,
                       height: 120,
                       fit: BoxFit.contain,
-                      errorBuilder: (c, e, s) => const Text('图片加载失败'))
+                      errorBuilder: (c, e, s) =>
+                          Text(_t('图片加载失败', 'Image failed to load')))
                   : const SizedBox.shrink();
             }).toList()),
         if (file is Map && safeUrl(file['url']) != null)
           TextButton(
               onPressed: () => link(file['url'].toString()),
-              child: Text('附件：${file['name'] ?? '下载'}'))
+              child: Text(
+                  '${_t('附件', 'Attachment')}: ${file['name'] ?? _t('下载', 'Download')}'))
       ]);
     }
     if (data is Map && data['type'] == 'json_render') {
@@ -168,7 +176,8 @@ class _FastCatMessageBodyState extends State<FastCatMessageBody> {
             case 'OrderItem':
             case 'LineItem':
               return ListTile(
-                  title: Text((p['name'] ?? p['title'] ?? '商品').toString()),
+                  title: Text(
+                      (p['name'] ?? p['title'] ?? _t('商品', 'Item')).toString()),
                   subtitle: Text(
                       '${p['description'] ?? ''}\n${p['quantity'] ?? p['qty'] ?? 1} × ${p['price'] ?? p['amount'] ?? ''}'));
             case 'Image':
@@ -176,7 +185,8 @@ class _FastCatMessageBodyState extends State<FastCatMessageBody> {
               return u != null && ['http', 'https'].contains(u.scheme)
                   ? Image.network(u.toString(),
                       height: 180,
-                      errorBuilder: (c, e, s) => const Text('图片加载失败'))
+                      errorBuilder: (c, e, s) =>
+                          Text(_t('图片加载失败', 'Image failed to load')))
                   : const SizedBox.shrink();
             case 'Button':
               final event = e['on'] is Map ? e['on']['press'] : null;
@@ -200,7 +210,8 @@ class _FastCatMessageBodyState extends State<FastCatMessageBody> {
                           : url != null
                               ? () => link(url.toString())
                               : null,
-                  child: Text((p['label'] ?? p['text'] ?? '提交').toString()));
+                  child: Text((p['label'] ?? p['text'] ?? _t('提交', 'Submit'))
+                      .toString()));
             case 'Input':
             case 'TextField':
             case 'DateTimeInput':
@@ -240,13 +251,17 @@ class _FastCatMessageBodyState extends State<FastCatMessageBody> {
                       .toList(),
                   onChanged: (v) => values[name] = v ?? '');
             default:
-              return Column(children: [Text('暂不支持的组件：$type'), ...children]);
+              return Column(children: [
+                Text('${_t('暂不支持的组件', 'Unsupported component')}: $type'),
+                ...children
+              ]);
           }
         }
 
         return node(spec['root'] ?? spec, 0);
       } catch (_) {
-        return Text('结构化内容无法完整显示：\n${widget.body}');
+        return Text(
+            '${_t('结构化内容无法完整显示', 'Unable to render structured content')}:\n${widget.body}');
       }
     }
     return markdown(widget.body);

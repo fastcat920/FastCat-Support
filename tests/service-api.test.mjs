@@ -243,7 +243,7 @@ test("knowledge document import indexes content and preserves original bytes", a
     400,
   );
 });
-test("workspace reception endpoints are removed; working hours retain revision validation and teams remain manageable", async () => {
+test("workspace reception endpoints are removed; working hours retain revision validation and team creation is removed", async () => {
   assert.equal((await call("/service/settings")).status, 404);
   assert.equal((await call("/service/settings", "PUT", {})).status, 404);
   assert.equal((await call("/service/runs")).status, 404);
@@ -292,7 +292,7 @@ test("workspace reception endpoints are removed; working hours retain revision v
     name: "售后",
     memberIds: [admin.id],
   });
-  assert.equal(team.status, 201);
+  assert.equal(team.status, 404);
   assert.equal(
     (
       await call("/service/members/" + admin.id, "PATCH", {
@@ -307,7 +307,6 @@ test("workspace reception endpoints are removed; working hours retain revision v
   const thread = await detail(visitor);
   assert.equal(thread.conversation.assignee, "");
   assert.equal(thread.messages.filter((m) => m.source === "ai").length, 0);
-  assert.equal((await call("/teams/" + team.data.id, "DELETE")).status, 200);
 });
 
 test("AI publishes a complete answer; manual takeover cancels in-flight output", async () => {

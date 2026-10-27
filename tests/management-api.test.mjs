@@ -429,3 +429,34 @@ test("disabling a member revokes sessions and returns their open conversations t
     0,
   );
 });
+
+test("member management saves status and workload capacity atomically with admin permissions", async () => {
+  const p = "/members/" + adminId;
+  assert.equal(
+    (await call(p, "PATCH", { availability: "away", capacity: 3 })).status,
+    200,
+  );
+  let member = (await call("/members")).data.find((m) => m.id === adminId);
+  assert.equal(member.availability, "away");
+  assert.equal(member.capacity, 3);
+  assert.equal(typeof member.workload, "number");
+  assert.equal(
+    (await call(p, "PATCH", { name: "not-saved", capacity: 0 })).status,
+    400,
+  );
+  member = (await call("/members")).data.find((m) => m.id === adminId);
+  assert.notEqual(member.name, "not-saved");
+  assert.equal(member.capacity, 3);
+  assert.equal(
+    (
+      await call(
+        p,
+        "PATCH",
+        { availability: "available", capacity: 10 },
+        agentB,
+      )
+    ).status,
+    403,
+  );
+  await call(p, "PATCH", { availability: "available", capacity: 10 });
+});

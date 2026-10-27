@@ -9,7 +9,11 @@ import {
   insertStaffMessage,
   updateConversation,
 } from "../lib/management.mjs";
-import { migrateMedia, insertVisitorMessage } from "../lib/media.mjs";
+import {
+  migrateMedia,
+  insertVisitorMessage,
+  storeAttachment,
+} from "../lib/media.mjs";
 import { migrateReceipts } from "../lib/receipts.mjs";
 import { migrateService, createService } from "../lib/service.mjs";
 import { migrateChannels, createChannels } from "../lib/channels.mjs";
@@ -267,29 +271,29 @@ test("platform lifecycle preserves history, default identity and legacy config; 
       }),
       (e) => e.status === 409,
     );
-    c = await x.request("/api/access/channels/" + c.id, "DELETE", {
-      expectedRevision: c.revision,
-    });
-    assert.equal(c.archived, true);
+    assert.equal(
+      await x.request("/api/access/channels/" + c.id, "DELETE", {
+        expectedRevision: c.revision,
+      }),
+      undefined,
+    );
+    assert.equal(
+      await x.request("/api/access/channels/" + c.id + "/restore", "POST", {
+        expectedRevision: c.revision,
+      }),
+      undefined,
+    );
+    x.db
+      .prepare("UPDATE access_channels SET archived=1,enabled=1 WHERE id=?")
+      .run(c.id);
+    migrateChannels(x.db);
+    c = x.channels.list().find((row) => row.id === c.id);
+    assert.equal(c.archived, false);
+    assert.equal(c.enabled, false);
     assert.equal(
       x.db.prepare("SELECT id FROM conversations WHERE id=?").get(visitor.id)
         .id,
       visitor.id,
-    );
-    assert.throws(
-      () => x.channels.resolve(c.public_key),
-      (e) => e.status === 403,
-    );
-    c = await x.request("/api/access/channels/" + c.id + "/restore", "POST", {
-      expectedRevision: c.revision,
-    });
-    assert.equal(c.archived, false);
-    assert.equal(c.enabled, false);
-    await assert.rejects(
-      x.request("/api/access/channels/" + first.id, "DELETE", {
-        expectedRevision: first.revision,
-      }),
-      (e) => e.status === 409,
     );
     migrateChannels(x.db);
     assert.equal(x.channels.resolve().id, first.id);
@@ -319,6 +323,16 @@ test("platform appearance validation rejects executable URLs, unknown AI agents 
       }),
       (e) => e.status === 400,
     );
+    for (const widget of [
+      [],
+      { language: "fr" },
+      { theme: "unknown" },
+      { followHostColor: "yes" },
+    ])
+      await assert.rejects(
+        x.channel("off", { widget }),
+        (e) => e.status === 400,
+      );
     const c = await x.channel("off", {
       widget: {
         themeColor: "#112233",
@@ -518,6 +532,130 @@ test("upgrade marks existing explicit handoff requests for assignment without cl
         .prepare("SELECT assignee FROM conversations WHERE id=?")
         .get(regular.id).assignee,
       "",
+    );
+  } finally {
+    x.close();
+  }
+});
+
+test("a fresh visitor message reopens a closed handoff and resumes AI, while duplicate retries do not", async () => {
+  const x = setup();
+  try {
+    const platform = await x.channel("auto");
+    const c = x.conversation(platform.id);
+    const first = insertVisitorMessage(x.db, c, {
+      body: "first",
+      clientId: "reopen-idempotent-001",
+    });
+    x.service.handoff(c.id, "访客请求人工");
+    x.db
+      .prepare("UPDATE conversations SET status='closed' WHERE id=?")
+      .run(c.id);
+    const before = x.db
+      .prepare("SELECT revision FROM conversations WHERE id=?")
+      .get(c.id).revision;
+    const duplicate = insertVisitorMessage(x.db, c, {
+      body: "first",
+      clientId: "reopen-idempotent-001",
+    });
+    assert.equal(duplicate.id, first.id);
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(
+      x.db.prepare("SELECT status FROM conversations WHERE id=?").get(c.id)
+        .status,
+      "closed",
+    );
+    assert.throws(() =>
+      insertVisitorMessage(x.db, c, { body: "", clientId: "bad" }),
+    );
+    assert.equal(
+      x.db.prepare("SELECT status FROM conversations WHERE id=?").get(c.id)
+        .status,
+      "closed",
+    );
+    const fresh = insertVisitorMessage(x.db, c, {
+      body: "new issue",
+      clientId: "reopen-idempotent-002",
+    });
+    const reopened = x.db
+      .prepare("SELECT * FROM conversations WHERE id=?")
+      .get(c.id);
+    assert.equal(reopened.status, "open");
+    assert.equal(reopened.assignee, "");
+    assert.equal(reopened.handoff_reason, "");
+    assert.equal(reopened.handoff_pending, 0);
+    assert.ok(reopened.revision > before);
+    x.service.onVisitor(c.id, fresh.id);
+    await x.flush();
+    assert.equal(x.calls.length, 1);
+    assert.equal(
+      x.db
+        .prepare(
+          "SELECT count(*) n FROM messages WHERE conversation_id=? AND source='ai'",
+        )
+        .get(c.id).n,
+      1,
+    );
+  } finally {
+    x.close();
+  }
+});
+
+test("visitor reopening respects staff-only channel policy", async () => {
+  const x = setup();
+  try {
+    const p = await x.channel("off"),
+      c = x.conversation(p.id);
+    x.db
+      .prepare("UPDATE conversations SET status='closed' WHERE id=?")
+      .run(c.id);
+    x.send(c);
+    await x.flush();
+    assert.equal(x.calls.length, 0);
+    assert.equal(
+      x.db
+        .prepare("SELECT automation_mode FROM conversations WHERE id=?")
+        .get(c.id).automation_mode,
+      "human",
+    );
+  } finally {
+    x.close();
+  }
+});
+
+test("attachment retries after closure do not reopen; a fresh attachment does reopen", async () => {
+  const x = setup();
+  try {
+    const p = await x.channel("auto"),
+      c = x.conversation(p.id);
+    const upload = {
+      conversationId: c.id,
+      visitorId: c.visitor_id,
+      filename: "log.txt",
+      data: Buffer.from("diagnostic"),
+      clientId: "attachment-reopen-001",
+    };
+    const first = storeAttachment(x.db, upload);
+    x.db
+      .prepare("UPDATE conversations SET status='closed' WHERE id=?")
+      .run(c.id);
+    const duplicate = storeAttachment(x.db, upload);
+    assert.equal(duplicate.id, first.id);
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(
+      x.db.prepare("SELECT status FROM conversations WHERE id=?").get(c.id)
+        .status,
+      "closed",
+    );
+    const fresh = storeAttachment(x.db, {
+      ...upload,
+      clientId: "attachment-reopen-002",
+    });
+    assert.equal(fresh.duplicate, false);
+    assert.equal(
+      x.db.prepare("SELECT status FROM conversations WHERE id=?").get(c.id)
+        .status,
+      "open",
     );
   } finally {
     x.close();

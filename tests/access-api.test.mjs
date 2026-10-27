@@ -175,7 +175,7 @@ test("Telegram webhook cannot create sessions from private BOT contact or unauth
   );
   assert.equal((await call("/api/conversations")).data.length, before);
 });
-test("new site instances publish appearance, retain sessions across key rotation and archive without deleting history", async () => {
+test("new site instances publish appearance, retain sessions across key rotation and disable without deleting history", async () => {
   const created = await call("/api/access/channels", "POST", {
     type: "web",
     name: "独立网站",
@@ -226,12 +226,29 @@ test("new site instances publish appearance, retain sessions across key rotation
     { Authorization: "Bearer " + visitor.token },
   );
   assert.equal(page.status, 200);
+  assert.equal(
+    (
+      await call("/api/access/channels/" + p.id, "DELETE", {
+        expectedRevision: p.revision,
+      })
+    ).status,
+    404,
+  );
+  assert.equal(
+    (
+      await call("/api/access/channels/" + p.id + "/restore", "POST", {
+        expectedRevision: p.revision,
+      })
+    ).status,
+    404,
+  );
   p = (
-    await call("/api/access/channels/" + p.id, "DELETE", {
+    await call("/api/access/channels/" + p.id, "PUT", {
+      ...p,
+      enabled: false,
       expectedRevision: p.revision,
     })
   ).data;
-  assert.equal(p.archived, true);
   assert.equal(
     (await call("/api/widget/config?appKey=" + p.public_key)).status,
     403,
@@ -240,14 +257,6 @@ test("new site instances publish appearance, retain sessions across key rotation
     (await call("/api/conversations")).data.some((c) => c.id === visitor.id),
   );
   assert.ok(
-    (await call("/api/access/channels?archived=1")).data.some(
-      (c) => c.id === p.id,
-    ),
+    (await call("/api/access/channels")).data.some((c) => c.id === p.id),
   );
-  p = (
-    await call("/api/access/channels/" + p.id + "/restore", "POST", {
-      expectedRevision: p.revision,
-    })
-  ).data;
-  assert.equal(p.enabled, false);
 });

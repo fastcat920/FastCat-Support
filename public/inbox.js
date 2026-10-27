@@ -1,3 +1,4 @@
+import { nextConversation } from "./inbox-selection.js";
 import { bindComposer } from "./chat-controls.js";
 import { renderMessage, bindMessageActions } from "./message-renderer.js";
 import { createOutbox, outboxHTML, bindOutbox } from "./outbox.js";
@@ -465,11 +466,36 @@ export function createInboxUI({
             changes,
           }),
         });
+        const completed =
+          changes.status === "closed" &&
+          selected.some((c) => c.id === state.active);
         state.selected.clear();
         toast("已更新 " + selected.length + " 个会话");
+        if (completed)
+          return await advanceQueue(
+            state.active,
+            selected.map((c) => c.id),
+          );
         await refresh();
       },
     );
+  }
+  async function advanceQueue(completedId, excluded = []) {
+    state.active = nextConversation(state.items, completedId, excluded);
+    state.detail = null;
+    state.headerKey = state.threadKey = "";
+    state.notesDirty = false;
+    if (!state.active) showEmpty();
+    await refresh();
+    if (!isActive()) return;
+    if (!state.active) {
+      state.active = nextConversation(state.items, completedId, excluded);
+      if (state.active) {
+        document.querySelector(".inbox")?.classList.add("has-chat");
+        await loadDetail(state.revision);
+        drawList();
+      }
+    }
   }
   async function change(changes, expectedRevision, conversationId) {
     const c = state.detail?.conversation;
@@ -492,6 +518,8 @@ export function createInboxUI({
       showEmpty();
       toast("会话已转交");
     }
+    if (changes.status === "closed" && state.active === c.id)
+      return await advanceQueue(c.id);
     await refresh();
   }
   async function loadDetail(revision) {
@@ -510,7 +538,16 @@ export function createInboxUI({
     }
     if (!isActive() || revision !== state.revision || state.active !== id)
       return;
-    const initial = state.detail?.conversation.id !== id;
+    const previous = state.detail?.conversation;
+    const initial = previous?.id !== id;
+    if (
+      !initial &&
+      previous.status !== "closed" &&
+      data.conversation.status === "closed"
+    ) {
+      await advanceQueue(id);
+      return;
+    }
     state.detail = data;
     const c = data.conversation;
     if (initial) {

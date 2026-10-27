@@ -229,3 +229,35 @@ test("extension management rejects agents and device protocol does not accept st
     403,
   );
 });
+
+test("language and accent preferences persist with validation and isolation", async () => {
+  const p = (await call("/preferences")).data;
+  const saved = await call("/preferences", "PUT", {
+    ...p,
+    language: "en",
+    themeColor: "#114466",
+    expectedRevision: p.revision,
+  });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.data.language, "en");
+  assert.equal(saved.data.themeColor, "#114466");
+  assert.equal(
+    (await call("/preferences", "GET", undefined, staffCookie)).data.language,
+    "zh-CN",
+  );
+  for (const changes of [
+    { language: "invalid" },
+    { themeColor: "red" },
+    { themeColor: "url(x)" },
+  ])
+    assert.equal(
+      (
+        await call("/preferences", "PUT", {
+          ...saved.data,
+          ...changes,
+          expectedRevision: saved.data.revision,
+        })
+      ).status,
+      400,
+    );
+});

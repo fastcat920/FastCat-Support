@@ -21,10 +21,94 @@
   frame.hidden = true;
   frame.style.cssText =
     "display:none;width:min(420px,calc(100vw - 40px));height:min(680px,calc(100dvh - 110px));border:0;border-radius:16px;box-shadow:0 8px 40px #0003;margin-bottom:12px";
+  let config = {},
+    unavailable = false;
+  const systemTheme = matchMedia("(prefers-color-scheme: dark)");
+  const host = () => {
+    const root = document.documentElement,
+      styles = getComputedStyle(root);
+    return {
+      type: "fastcat:appearance",
+      language: script.dataset.language || root.lang || navigator.language,
+      theme:
+        script.dataset.theme ||
+        root.dataset.theme ||
+        (root.classList.contains("dark")
+          ? "dark"
+          : root.classList.contains("light")
+            ? "light"
+            : styles.colorScheme === "dark"
+              ? "dark"
+              : styles.colorScheme === "light"
+                ? "light"
+                : systemTheme.matches
+                  ? "dark"
+                  : "light"),
+      color:
+        script.dataset.themeColor ||
+        styles.getPropertyValue("--fastcat-primary").trim() ||
+        styles.getPropertyValue("--brand").trim() ||
+        document.querySelector('meta[name="theme-color"]')?.content,
+    };
+  };
+  const sync = () => {
+    const h = host(),
+      en = /^en(?:-|$)/i.test(
+        config.language && config.language !== "auto"
+          ? config.language
+          : h.language,
+      );
+    frame.contentWindow?.postMessage(h, base.origin);
+    button.textContent = unavailable
+      ? en
+        ? "Support unavailable"
+        : "客服暂不可用"
+      : frame.hidden
+        ? en
+          ? "Contact support"
+          : "联系客服"
+        : en
+          ? "Close support"
+          : "关闭客服";
+    frame.title = en ? "Support" : "在线客服";
+    const color =
+      config.followHostColor !== false && /^#[0-9a-f]{6}$/i.test(h.color || "")
+        ? h.color
+        : config.themeColor;
+    if (/^#[0-9a-f]{6}$/i.test(color || "")) {
+      button.style.background = color;
+      const rgb = [1, 3, 5]
+        .map((i) => parseInt(color.slice(i, i + 2), 16) / 255)
+        .map((n) => (n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4));
+      button.style.color =
+        0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 0.179
+          ? "#000"
+          : "#fff";
+    }
+  };
+  frame.addEventListener("load", sync);
+  window.addEventListener("message", (event) => {
+    if (
+      event.source === frame.contentWindow &&
+      event.origin === base.origin &&
+      event.data?.type === "fastcat:ready"
+    )
+      sync();
+  });
+  new MutationObserver(sync).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["lang", "class", "style", "data-theme"],
+  });
+  new MutationObserver(sync).observe(script, {
+    attributes: true,
+    attributeFilter: ["data-language", "data-theme", "data-theme-color"],
+  });
+  systemTheme.addEventListener("change", sync);
+  window.addEventListener("languagechange", sync);
   button.onclick = () => {
     frame.hidden = !frame.hidden;
     frame.style.display = frame.hidden ? "none" : "block";
-    button.textContent = frame.hidden ? "联系客服" : "关闭客服";
+    sync();
     button.setAttribute("aria-expanded", String(!frame.hidden));
   };
   fetch(new URL("/api/widget/config?appKey=" + encodeURIComponent(key), base), {
@@ -36,18 +120,8 @@
     })
     .then((c) => {
       const w = c.widget || {};
-      if (/^#[0-9a-f]{6}$/i.test(w.themeColor || "")) {
-        const rgb = [1, 3, 5]
-          .map((i) => parseInt(w.themeColor.slice(i, i + 2), 16) / 255)
-          .map((n) =>
-            n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4,
-          );
-        button.style.background = w.themeColor;
-        button.style.color =
-          0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 0.179
-            ? "#000"
-            : "#fff";
-      }
+      config = w;
+      sync();
       const position = w.position || "bottom-right";
       box.style.right = position.endsWith("right") ? "20px" : "auto";
       box.style.left = position.endsWith("left") ? "20px" : "auto";
@@ -61,8 +135,10 @@
     })
     .catch(() => {
       button.disabled = true;
-      button.textContent = "客服暂不可用";
+      unavailable = true;
+      sync();
     });
   box.append(frame, button);
   document.body.append(box);
+  sync();
 })();

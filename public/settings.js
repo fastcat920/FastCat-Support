@@ -38,7 +38,14 @@ export function createSettingsUI({
     );
     const el = document.querySelector("#settings-panel");
     if (section === "profile") {
-      el.innerHTML = `<h2>个人资料</h2><p>${E(me.email)} · ${me.role === "admin" ? "管理员" : "客服"}</p><form><div class="profile-avatar"><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div><label>上传头像<input id="profile-avatar" type="file" accept="image/png,image/jpeg,image/webp"></label><span class="small">自动裁切为正方形，最大 5 MB</span></div><div class="field"><label>姓名<input name="name" maxlength="100" required value="${E(me.name)}"></label></div><button class="primary">保存资料</button></form><h3>接待服务状态</h3><p>暂停接待不影响已有会话。</p><button id="toggle-reception">${me.availability === "offline" ? "恢复接待" : "暂停接待"}</button>`;
+      el.innerHTML = `<h2>个人资料</h2><p>${E(me.email)} · ${me.role === "admin" ? "管理员" : "客服"}</p><form><div class="profile-avatar"><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div><label>上传头像<input id="profile-avatar" type="file" accept="image/png,image/jpeg,image/webp"></label><span class="small">自动裁切为正方形，最大 5 MB</span></div><div class="field"><label>姓名<input name="name" maxlength="100" required value="${E(me.name)}"></label></div><button class="primary">保存资料</button></form><h3>在线状态</h3><p>状态不会影响已有会话。</p><select id="profile-presence" aria-label="在线状态">${Object.entries(
+        { available: "在线", away: "忙碌", offline: "离线" },
+      )
+        .map(
+          ([key, label]) =>
+            `<option value="${key}" ${key === me.availability ? "selected" : ""}>${label}</option>`,
+        )
+        .join("")}</select>`;
       let avatar = me.avatar || "";
       el.querySelector("#profile-avatar").onchange = safe(async (e) => {
         const file = e.target.files[0];
@@ -92,9 +99,8 @@ export function createSettingsUI({
           toast("资料已保存");
         })();
       };
-      el.querySelector("#toggle-reception").onclick = safe(async () => {
-        const availability =
-          me.availability === "offline" ? "available" : "offline";
+      el.querySelector("#profile-presence").onchange = safe(async (event) => {
+        const availability = event.target.value;
         await api("/presence", {
           method: "PATCH",
           body: JSON.stringify({ availability }),
@@ -105,12 +111,18 @@ export function createSettingsUI({
     }
     if (section === "general") {
       const p = await api("/preferences");
-      el.innerHTML = `<h2>通用</h2><div class="field"><label>主题模式<select id="settings-theme"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label></div><p class="small">主题偏好随账号保存。当前界面语言：简体中文。</p>`;
-      el.querySelector("select").value = p.theme;
-      el.querySelector("select").onchange = safe(async () => {
-        await notifications.save({ theme: el.querySelector("select").value });
-        toast("主题已保存");
-      });
+      el.innerHTML = `<h2>通用</h2><div class="field"><label>界面语言<select id="settings-language"><option value="zh-CN">简体中文</option><option value="en">English</option><option value="system">跟随浏览器</option></select></label></div><div class="field"><label>主题模式<select id="settings-theme"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label></div><div class="field"><label>主题色<input id="settings-color" type="color" value="${E(p.themeColor)}"></label></div><p class="small">偏好随账号保存；访客端默认跟随所在网页或客户端的语言与主题。</p>`;
+      for (const [id, key] of [
+        ["language", "language"],
+        ["theme", "theme"],
+        ["color", "themeColor"],
+      ]) {
+        const input = el.querySelector("#settings-" + id);
+        input.value = p[key];
+        input.onchange = safe(async () => {
+          await notifications.save({ [key]: input.value });
+        });
+      }
     }
     if (section === "notifications") {
       const p = await api("/preferences");
@@ -153,7 +165,7 @@ export function createSettingsUI({
     }
     if (section === "about")
       el.innerHTML =
-        "<h2>FastCat Support</h2><p>版本 0.20.0</p><p>独立客服工作空间</p>";
+        "<h2>FastCat Support</h2><p>版本 0.21.0</p><p>独立客服工作空间</p>";
   }
   return { render };
 }

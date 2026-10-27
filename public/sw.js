@@ -1,4 +1,4 @@
-const CACHE = "fastcat-shell-v020";
+const CACHE = "fastcat-shell-v021";
 const FILES = [
   "/",
   "/widget",
@@ -7,6 +7,9 @@ const FILES = [
   "/chat-controls.js",
   "/app.js",
   "/ids.js",
+  "/i18n.js",
+  "/appearance.js",
+  "/inbox-selection.js",
   "/settings.js",
   "/notifications.js",
   "/extensions.js",

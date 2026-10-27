@@ -1,3 +1,4 @@
+import 'strings.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -8,14 +9,16 @@ import 'chat.dart';
 /// This observer does not mark messages read. Chat sends receipts when visible.
 class FastCatLauncher extends StatefulWidget {
   final FastCatClient client;
-  final String title;
+  final String? title;
+  final Locale? locale;
   final Alignment alignment;
   final Future<FastCatAttachment?> Function()? pickAttachment;
   final Future<void> Function(String filename, Uint8List bytes)? onAttachment;
   const FastCatLauncher(
       {super.key,
       required this.client,
-      this.title = '在线客服',
+      this.title,
+      this.locale,
       this.alignment = Alignment.bottomRight,
       this.pickAttachment,
       this.onAttachment});
@@ -73,6 +76,7 @@ class _FastCatLauncherState extends State<FastCatLauncher> {
           builder: (_) => FastCatChat(
               client: widget.client,
               title: widget.title,
+              locale: widget.locale,
               pickAttachment: widget.pickAttachment,
               onAttachment: widget.onAttachment)));
     } finally {
@@ -97,7 +101,8 @@ class _FastCatLauncherState extends State<FastCatLauncher> {
               label: Text(_unread.length > 99 ? '99+' : '${_unread.length}'),
               child: FloatingActionButton(
                   heroTag: null,
-                  tooltip: '联系客服',
+                  tooltip: supportText(
+                      context, '联系客服', 'Contact support', widget.locale),
                   onPressed: _opening ? null : _open,
                   child: const Icon(Icons.chat_bubble_outline)))));
 }

@@ -75,7 +75,8 @@ void main() {
     });
     await tester.pumpWidget(
         MaterialApp(home: Scaffold(body: FastCatMessageBody(body: body))));
-    expect(find.textContaining('无法完整显示'), findsOneWidget);
+    expect(find.textContaining('Unable to render structured content'),
+        findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

@@ -1,6 +1,6 @@
 # FastCat Support · Flutter / Dart SDK
 
-SDK 版本 0.13.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
+SDK 版本 0.14.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
 
 ## 安装与连接
 
@@ -87,3 +87,9 @@ Launcher 显示已同步、尚未读取的客服/AI 回复角标。点击后进�
 FastCatChat 与可独立使用的 FastCatMessageBody 支持 Markdown、rich_text 和 json_render body 信封。结构化按钮将内容填入输入框，由用户确认发送。外链由 onOpenLink 回调交给宿主处理，默认不自动打开；不执行 HTML 或脚本 URL。独立 Dart API 客户端仍返回原始 body。完整协议与边界见项目 docs/FEATURES-V013.md。
 
 11 项 Flutter 测试与静态分析通过；真实设备和宿主外链打开行为需宿主自行联调。
+
+## 语言、主题与会话继续
+
+`FastCatChat` 和 `FastCatLauncher` 默认跟随宿主 `MaterialApp` 的 `Localizations.locale`（简体中文或英文）和 `ThemeData`，包括明暗模式与 `colorScheme`。应用切换语言或主题后，聊天控件随之更新。可传入 `locale: const Locale('en')` 或 `locale: const Locale('zh', 'CN')` 固定聊天语言；自定义 `title` 和服务端消息不做机器翻译。
+
+客服结束会话后，输入和发送保持可用。下一条新消息会重新打开同一会话；服务端按该平台 AI 策略恢复接待，纯人工策略不被覆盖。失败消息仍使用原 clientId 重试，已成功消息的重试不会重开会话。

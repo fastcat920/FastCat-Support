@@ -1,3 +1,5 @@
+import { setLanguage, observeLanguage } from "./i18n.js";
+import { resolveAppearance, applyAppearance } from "./appearance.js";
 import { bindComposer, createMessageSound } from "./chat-controls.js";
 import { renderMessage, bindMessageActions } from "./message-renderer.js";
 import { createOutbox, outboxHTML, bindOutbox, purgeOutbox } from "./outbox.js";
@@ -22,24 +24,54 @@ function widgetURL(path) {
   if (appKey) u.searchParams.set("appKey", appKey);
   return u.href;
 }
+let appearanceConfig = {},
+  hostAppearance = {};
+const systemTheme = matchMedia("(prefers-color-scheme: dark)");
+function updateAppearance() {
+  const appearance = resolveAppearance(appearanceConfig, hostAppearance, {
+    language: navigator.language,
+    dark: systemTheme.matches,
+  });
+  setLanguage(appearance.language);
+  applyAppearance(appearance);
+}
+observeLanguage();
+updateAppearance();
+systemTheme.addEventListener("change", updateAppearance);
+window.addEventListener("languagechange", updateAppearance);
+let parentOrigin;
+try {
+  parentOrigin = new URL(document.referrer).origin;
+} catch {}
+window.addEventListener("message", (event) => {
+  if (
+    !parentOrigin ||
+    event.source !== parent ||
+    event.origin !== parentOrigin ||
+    event.data?.type !== "fastcat:appearance"
+  )
+    return;
+  const value = event.data;
+  hostAppearance = {
+    language:
+      typeof value.language === "string"
+        ? value.language.slice(0, 35)
+        : undefined,
+    theme: value.theme,
+    color: value.color,
+  };
+  updateAppearance();
+});
+if (parent !== window && parentOrigin)
+  parent.postMessage({ type: "fastcat:ready" }, parentOrigin);
 fetch(widgetURL("/config"))
   .then((r) => r.json())
   .then((c) => {
     if (c.title)
       document.querySelector(".widget-shell header h2").textContent = c.title;
-    const w = c.widget || {},
-      color = w.themeColor;
-    if (/^#[0-9a-f]{6}$/i.test(color || "")) {
-      const rgb = [1, 3, 5]
-        .map((i) => parseInt(color.slice(i, i + 2), 16) / 255)
-        .map((n) => (n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4));
-      const light = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-      document.documentElement.style.setProperty("--brand", color);
-      document.documentElement.style.setProperty(
-        "--brand-fg",
-        light > 0.179 ? "#000000" : "#ffffff",
-      );
-    }
+    const w = c.widget || {};
+    appearanceConfig = w;
+    updateAppearance();
     if (w.logoUrl) {
       const image = document.createElement("img");
       image.src = w.logoUrl;
@@ -315,9 +347,9 @@ async function refresh() {
     if (root.querySelector(".error"))
       root.querySelector(".error").textContent = "";
     const closed = d.conversation.status === "closed";
-    root.querySelector("textarea").disabled = closed;
-    root.querySelector("button.primary").disabled = closed || sending;
-    document.querySelector("#upload-file").disabled = closed || uploading;
+    root.querySelector("textarea").disabled = false;
+    root.querySelector("button.primary").disabled = sending;
+    document.querySelector("#upload-file").disabled = uploading;
     const handoff = document.querySelector("#widget-handoff");
     handoff.disabled = closed || a.handoffRequested;
     handoff.textContent = a.handoffRequested ? "已请求人工" : "联系人工";
@@ -328,7 +360,7 @@ async function refresh() {
         : d.conversation.assigned
           ? "人工客服接待中"
           : "等待客服接待";
-    if (closed) error("本次会话已结束，感谢您的咨询。");
+    if (closed) error("本次会话已结束，发送消息即可继续咨询。");
   } catch (err) {
     error(err.message);
   } finally {

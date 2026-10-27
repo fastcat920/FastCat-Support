@@ -47,12 +47,44 @@ class FakeClient extends FastCatClient {
 
 void main() {
   testWidgets(
+      'chat follows host English and dark theme and permits sending after closure',
+      (tester) async {
+    final c = FakeClient();
+    final scheme = ColorScheme.fromSeed(
+        seedColor: Colors.orange, brightness: Brightness.dark);
+    await tester.pumpWidget(MaterialApp(
+        theme: ThemeData.dark().copyWith(colorScheme: scheme),
+        home: FastCatChat(client: c)));
+    expect(find.text('Support'), findsOneWidget);
+    expect(find.text('Talk to a person'), findsOneWidget);
+    final context = tester.element(find.byType(TextField));
+    expect(Theme.of(context).brightness, Brightness.dark);
+    expect(Theme.of(context).colorScheme.primary, scheme.primary);
+    c.pages.add({
+      'messages': [],
+      'nextCursor': 0,
+      'conversation': {'status': 'closed'}
+    });
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'new issue');
+    await tester.tap(find.byTooltip('Send'));
+    await tester.pump();
+    expect(c.sent.length, 1);
+    expect(find.byTooltip('Retry send'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    unawaited(c.pages.close());
+    unawaited(c.reads.close());
+    await tester.pump();
+    c.close();
+  });
+  testWidgets(
       'chat renders messages, retries same send, and requests human support',
       (tester) async {
     final client = FakeClient();
     await tester.pumpWidget(MaterialApp(
         home: FastCatChat(
             client: client,
+            locale: const Locale("zh", "CN"),
             pickAttachment: () async => null,
             onAttachment: (String name, Uint8List data) async {})));
     client.pages.add({
@@ -87,7 +119,8 @@ void main() {
       'AI draft is transient and disappears when the final message arrives',
       (tester) async {
     final c = FakeClient();
-    await tester.pumpWidget(MaterialApp(home: FastCatChat(client: c)));
+    await tester.pumpWidget(MaterialApp(
+        home: FastCatChat(client: c, locale: const Locale("zh", "CN"))));
     c.pages.add({
       'messages': [],
       'nextCursor': 0,
@@ -129,7 +162,10 @@ void main() {
       'nextCursor': 4
     };
     await tester.pumpWidget(MaterialApp(
-        home: Scaffold(body: Stack(children: [FastCatLauncher(client: c)]))));
+        home: Scaffold(
+            body: Stack(children: [
+      FastCatLauncher(client: c, locale: const Locale("zh", "CN"))
+    ]))));
     c.pages.add(page);
     await tester.pump();
     expect(find.text('1'), findsOneWidget);

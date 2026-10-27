@@ -56,7 +56,7 @@ export function createManagementUI({
             .includes(query.toLowerCase()),
         );
         document.querySelector("#member-table").innerHTML = rows.length
-          ? `<div class="table-scroll"><table class="table"><thead><tr>${tab === "members" ? "<th>成员</th><th>角色</th><th>状态</th><th>待处理会话</th><th>操作</th>" : "<th>邮箱</th><th>角色</th><th>状态</th><th>有效期</th><th>操作</th>"}</tr></thead><tbody>${rows.map((r) => (tab === "members" ? `<tr><td><div class="row"><div class="avatar">${E(r.name[0])}</div><div><strong>${E(r.name)} ${r.id === me.id ? '<span class="badge neutral">我</span>' : ""}</strong><div class="small">${E(r.email)}</div></div></div></td><td>${roleName(r.role)}</td><td><span class="badge ${r.active ? "success" : "neutral"}">${r.active ? "启用" : "停用"}</span></td><td>${r.workload}</td><td><button class="quiet" data-edit-member="${r.id}">管理</button></td></tr>` : `<tr><td>${E(r.email)}</td><td>${roleName(r.role)}</td><td><span class="badge neutral">${r.accepted ? "已加入" : r.revoked ? "已撤销" : r.expires < Date.now() ? "已过期" : "待接受"}</span></td><td>${new Date(r.expires).toLocaleDateString("zh-CN")}</td><td>${!r.accepted && !r.revoked && r.expires > Date.now() ? `<button class="quiet danger" data-revoke="${r.id}">撤销邀请</button>` : "—"}</td></tr>`)).join("")}</tbody></table></div>`
+          ? `<div class="table-scroll"><table class="table"><thead><tr>${tab === "members" ? "<th>成员</th><th>角色</th><th>账号状态</th><th>在线状态</th><th>工作量 / 容量</th><th>操作</th>" : "<th>邮箱</th><th>角色</th><th>状态</th><th>有效期</th><th>操作</th>"}</tr></thead><tbody>${rows.map((r) => (tab === "members" ? `<tr><td><div class="row"><div class="avatar">${E(r.name[0])}</div><div><strong>${E(r.name)} ${r.id === me.id ? '<span class="badge neutral">我</span>' : ""}</strong><div class="small">${E(r.email)}</div></div></div></td><td>${roleName(r.role)}</td><td><span class="badge ${r.active ? "success" : "neutral"}">${r.active ? "启用" : "停用"}</span></td><td>${r.active ? { available: "在线", away: "忙碌", offline: "离线" }[r.availability] || "离线" : "离线"}</td><td>${r.workload} / ${r.capacity}</td><td><button class="quiet" data-edit-member="${r.id}">管理</button></td></tr>` : `<tr><td>${E(r.email)}</td><td>${roleName(r.role)}</td><td><span class="badge neutral">${r.accepted ? "已加入" : r.revoked ? "已撤销" : r.expires < Date.now() ? "已过期" : "待接受"}</span></td><td>${new Date(r.expires).toLocaleDateString("zh-CN")}</td><td>${!r.accepted && !r.revoked && r.expires > Date.now() ? `<button class="quiet danger" data-revoke="${r.id}">撤销邀请</button>` : "—"}</td></tr>`)).join("")}</tbody></table></div>`
           : empty("暂无记录", "邀请成员后，可以在这里管理。");
         document
           .querySelectorAll("[data-edit-member]")
@@ -290,13 +290,28 @@ export function createManagementUI({
       "管理成员",
       field("name", "姓名", member.name) +
         field("email", "邮箱", member.email, "email") +
-        `<div class="field"><label for="member-role">角色</label><select id="member-role" name="role"><option value="agent" ${member.role === "agent" ? "selected" : ""}>客服</option><option value="admin" ${member.role === "admin" ? "selected" : ""}>管理员</option></select></div><div class="field"><label for="member-active">状态</label><select id="member-active" name="active"><option value="1" ${member.active ? "selected" : ""}>启用</option><option value="0" ${!member.active ? "selected" : ""}>停用</option></select></div><p class="small">停用后会撤销登录，并将未结束会话退回待分配队列。</p>`,
+        `<div class="field"><label for="member-role">角色</label><select id="member-role" name="role"><option value="agent" ${member.role === "agent" ? "selected" : ""}>客服</option><option value="admin" ${member.role === "admin" ? "selected" : ""}>管理员</option></select></div><div class="field"><label for="member-active">账号状态</label><select id="member-active" name="active"><option value="1" ${member.active ? "selected" : ""}>启用</option><option value="0" ${!member.active ? "selected" : ""}>停用</option></select></div><p class="small">停用后会撤销登录，并将未结束会话退回待分配队列。</p><div class="field"><label>在线状态<select name="availability">${Object.entries(
+          { available: "在线", away: "忙碌", offline: "离线" },
+        )
+          .map(
+            ([key, label]) =>
+              `<option value="${key}" ${member.availability === key ? "selected" : ""}>${label}</option>`,
+          )
+          .join(
+            "",
+          )}</select></label></div><div class="field"><label>同时处理容量<input name="capacity" type="number" min="1" max="100" required value="${member.capacity}"></label></div><p class="small">当前工作量：${member.workload}。仅在线且未满容量的成员会自动分配转人工会话。</p>`,
       "保存",
       async (b) => {
         await patch("/members/" + member.id, {
           ...b,
           active: Number(b.active),
+          capacity: Number(b.capacity),
         });
+        if (getMe().id === member.id) {
+          getMe().availability = b.availability;
+          const select = document.querySelector("#own-availability");
+          if (select) select.value = b.availability;
+        }
         toast("成员已更新");
         await render("members");
       },

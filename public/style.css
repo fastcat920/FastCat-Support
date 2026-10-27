@@ -5,6 +5,7 @@
   --muted: #7b8496;
   --line: #e9ecf2;
   --brand: #6257df;
+  --brand-fg: #fff;
   --brand-soft: #eeecfc;
   --green: #2c9976;
   --radius: 12px;
@@ -60,11 +61,12 @@ button:disabled {
 }
 .primary {
   background: var(--brand);
-  color: #fff;
+  color: var(--brand-fg);
   border-color: var(--brand);
 }
 .primary:hover {
-  background: #5147c5;
+  background: var(--brand);
+  filter: brightness(0.95);
 }
 .quiet {
   border: 0;
@@ -131,7 +133,7 @@ label {
   width: 35px;
   height: 35px;
   background: var(--brand);
-  color: white;
+  color: var(--brand-fg);
   border-radius: 11px;
   font-weight: 800;
   font-size: 22px;
@@ -484,7 +486,7 @@ p {
 }
 .agent .bubble {
   background: var(--brand);
-  color: white;
+  color: var(--brand-fg);
   border: 0;
   border-radius: 12px 0 12px 12px;
 }
@@ -633,7 +635,7 @@ p {
 .widget-shell header {
   padding: 24px;
   background: var(--brand);
-  color: white;
+  color: var(--brand-fg);
 }
 .widget-shell h2 {
   margin: 0 0 8px;
@@ -1593,7 +1595,7 @@ p {
   height: 18px;
   padding: 0 5px;
   background: var(--brand);
-  color: #fff;
+  color: var(--brand-fg);
   font-size: 10px;
   font-weight: 600;
   border-radius: 6px;

@@ -8,9 +8,11 @@ export function createAccessUI({ api, E, modal, toast }) {
   };
   const input = (label, name, value = "", type = "text") =>
     `<div class="field"><label>${label}<input name="${name}" type="${type}" value="${E(value)}"></label></div>`;
-  let showArchived = false;
   const widgetDefaults = {
     themeColor: "#5b4ee8",
+    language: "auto",
+    theme: "auto",
+    followHostColor: true,
     position: "bottom-right",
     welcomeMessage: "",
     logoUrl: "",
@@ -87,7 +89,7 @@ export function createAccessUI({ api, E, modal, toast }) {
   async function render() {
     const revision = ++renderRevision;
     const [channels, tg] = await Promise.all([
-      api("/access/channels" + (showArchived ? "?archived=1" : "")),
+      api("/access/channels"),
       api("/access/telegram"),
     ]);
     if (revision !== renderRevision) return;
@@ -98,15 +100,10 @@ export function createAccessUI({ api, E, modal, toast }) {
       !channels.some((c) => c.id === selected)
     )
       selected = null;
-    root.innerHTML = `<div class="platform-workspace"><aside class="platform-list"><header><h2>接入平台</h2><button id="access-create" aria-label="添加网页或 SDK 平台">＋</button></header><div class="platform-list-tools"><button id="access-archived">${showArchived ? "返回平台" : "已归档"}</button></div><nav aria-label="平台列表">${channels.map((c) => `<button class="platform-list-item ${selected === c.id ? "active" : ""}" data-platform="${c.id}"><span class="platform-kind">${c.type === "web" ? "网" : "SDK"}</span><span><strong>${E(c.name)}</strong><small>${c.type === "web" ? "网页端" : "Flutter / Dart"} · ${c.archived ? "已归档" : c.enabled ? "已启用" : "已停用"}</small></span><span class="platform-status ${c.enabled ? "enabled" : ""}"></span></button>`).join("")}${!showArchived ? `<button class="platform-list-item ${selected === "telegram" ? "active" : ""}" data-platform="telegram"><span class="platform-kind">TG</span><span><strong>Telegram 客服话题</strong><small>${tg.enabled ? "已启用" : "未启用"} · 仅客服回复</small></span><span class="platform-status ${tg.enabled ? "enabled" : ""}"></span></button>` : ""}</nav></aside><section id="platform-detail" class="platform-detail"></section></div>`;
+    root.innerHTML = `<div class="platform-workspace"><aside class="platform-list"><header><h2>接入平台</h2><button id="access-create" aria-label="添加网页或 SDK 平台">＋</button></header><nav aria-label="平台列表">${channels.map((c) => `<button class="platform-list-item ${selected === c.id ? "active" : ""}" data-platform="${c.id}"><span class="platform-kind">${c.type === "web" ? "网" : "SDK"}</span><span><strong>${E(c.name)}</strong><small>${c.type === "web" ? "网页端" : "Flutter / Dart"} · ${c.enabled ? "已启用" : "已停用"}</small></span><span class="platform-status ${c.enabled ? "enabled" : ""}"></span></button>`).join("")}${`<button class="platform-list-item ${selected === "telegram" ? "active" : ""}" data-platform="telegram"><span class="platform-kind">TG</span><span><strong>Telegram 客服话题</strong><small>${tg.enabled ? "已启用" : "未启用"} · 仅客服回复</small></span><span class="platform-status ${tg.enabled ? "enabled" : ""}"></span></button>`}</nav></aside><section id="platform-detail" class="platform-detail"></section></div>`;
     root.querySelector("#access-create").onclick = safe(() => {
       selected = "new";
       edit();
-    });
-    root.querySelector("#access-archived").onclick = safe(async () => {
-      showArchived = !showArchived;
-      selected = null;
-      await render();
     });
     root.querySelectorAll("[data-platform]").forEach(
       (b) =>
@@ -120,46 +117,16 @@ export function createAccessUI({ api, E, modal, toast }) {
       return;
     }
     const current = channels.find((c) => c.id === selected);
-    if (current && !current.archived) {
+    if (current) {
       await edit(current);
       return;
     }
     const detail = root.querySelector("#platform-detail");
-    detail.innerHTML = `<header class="platform-detail-head"><div><h1>${showArchived ? "已归档平台" : "接入平台"}</h1><p class="small">${showArchived ? "恢复平台后检查配置，再手动启用。" : "从左侧选择平台，配置接入方式、AI 接待和组件外观。"}</p></div></header><div class="platform-overview"><h2>${current ? E(current.name) : "连接你的网页与应用"}</h2><p>网页、Flutter / Dart SDK 和 Telegram 客服群话题。</p><div class="platform-overview-options">${channels.map((c) => `<article class="panel"><span class="badge ${c.enabled ? "success" : "neutral"}">${c.archived ? "已归档" : c.enabled ? "已启用" : "已停用"}</span><h3>${E(c.name)}</h3><p class="small">${E(modeName(c.ai_mode))}</p>${c.archived ? `<button data-restore="${c.id}">恢复为停用</button>` : `<button data-open-platform="${c.id}">配置平台 →</button>${!c.is_default ? `<button class="quiet" data-archive="${c.id}">归档</button>` : ""}`}</article>`).join("")}</div><p class="notice">Telegram 仅作为客服群话题桥接，不提供用户私聊 Bot 咨询入口。</p></div>`;
+    detail.innerHTML = `<header class="platform-detail-head"><div><h1>接入平台</h1><p class="small">从左侧选择平台，配置接入方式、AI 接待和组件外观。</p></div></header><div class="platform-overview"><h2>${current ? E(current.name) : "连接你的网页与应用"}</h2><p>网页、Flutter / Dart SDK 和 Telegram 客服群话题。</p><div class="platform-overview-options">${channels.map((c) => `<article class="panel"><span class="badge ${c.enabled ? "success" : "neutral"}">${c.enabled ? "已启用" : "已停用"}</span><h3>${E(c.name)}</h3><p class="small">${E(modeName(c.ai_mode))}</p><button data-open-platform="${c.id}">配置平台 →</button></article>`).join("")}</div><p class="notice">Telegram 仅作为客服群话题桥接，不提供用户私聊 Bot 咨询入口。</p></div>`;
     detail.querySelectorAll("[data-open-platform]").forEach(
       (b) =>
         (b.onclick = safe(async () => {
           selected = b.dataset.openPlatform;
-          await render();
-        })),
-    );
-    detail.querySelectorAll("[data-archive]").forEach(
-      (b) =>
-        (b.onclick = () => {
-          const c = channels.find((c) => c.id === b.dataset.archive);
-          modal(
-            "归档平台",
-            `<p>归档后将停止新咨询，访客和历史消息保留，可恢复为停用状态。</p>`,
-            "归档",
-            async () => {
-              await api("/access/channels/" + c.id + "/archive", {
-                method: "POST",
-                body: JSON.stringify({ expectedRevision: c.revision }),
-              });
-              selected = null;
-              await render();
-            },
-          );
-        }),
-    );
-    detail.querySelectorAll("[data-restore]").forEach(
-      (b) =>
-        (b.onclick = safe(async () => {
-          const c = channels.find((c) => c.id === b.dataset.restore);
-          await api("/access/channels/" + c.id + "/restore", {
-            method: "POST",
-            body: JSON.stringify({ expectedRevision: c.revision }),
-          });
           await render();
         })),
     );
@@ -204,7 +171,25 @@ export function createAccessUI({ api, E, modal, toast }) {
         )
         .join(
           "",
-        )}</select></label></div><div class="field"><label>平台智能体<select name="agent_id"><option value="">工作空间默认模型助手</option>${agents.map((a) => `<option value="${a.id}" ${a.id === c.agent_id ? "selected" : ""}>${E(a.name)}</option>`).join("")}</select></label></div><div data-assist>${input("等待人工回复超时（秒；0 表示不回落 AI）", "fallback_timeout", c.fallback_timeout, "number")}</div><p class="small">人工回复、转交和主动接管会停止 AI；工作时间沿用团队管理设置，会话由客服手动分配。修改接待策略会终止该平台正在生成的 AI 回复。</p></section><section data-platform-section="appearance"><h3>组件外观与欢迎语</h3>${input("主题色", "themeColor", w.themeColor, "color")}${input("Logo HTTPS 地址（选填）", "logoUrl", w.logoUrl)}<div class="field"><label>悬浮位置<select name="position">${["bottom-right", "bottom-left", "top-right", "top-left"].map((v, i) => `<option value="${v}" ${v === w.position ? "selected" : ""}>${["右下角", "左下角", "右上角", "左上角"][i]}</option>`).join("")}</select></label></div><div class="field"><label>欢迎语（留空人工接待（默认））<textarea name="welcomeMessage" rows="3" maxlength="3000">${E(w.welcomeMessage)}</textarea></label></div><p class="small">颜色、Logo 与位置用于网页组件；Flutter 外观仍由宿主组件配置。</p><div id="widget-design-preview"><header><strong data-preview-title></strong></header><div class="platform-preview-messages"><p data-preview-welcome></p><div class="platform-preview-question">你好，我想咨询一个问题</div><p class="small">客服会在这里回复你</p></div><div class="platform-preview-composer">输入你的问题…</div></div></section><section data-platform-section="integration">${existing ? `<details><summary>嵌入代码与接入标识</summary><pre class="code">${E(code())}</pre><div class="code">${E(c.public_key)}</div><button type="button" id="rotate-platform-key">重新生成接入标识</button>${c.type === "sdk" ? '<p><a href="/fastcat_support_sdk.zip" download>下载 Flutter SDK 与示例</a></p>' : `<p><a href="/embed-demo.html?appKey=${c.public_key}" target="_blank" rel="noopener">打开实际嵌入演示 ↗</a></p>`}</details>` : '<p class="small">保存后即可复制接入代码；新平台默认停用。</p>'}</section>`,
+        )}</select></label></div><div class="field"><label>平台智能体<select name="agent_id"><option value="">工作空间默认模型助手</option>${agents.map((a) => `<option value="${a.id}" ${a.id === c.agent_id ? "selected" : ""}>${E(a.name)}</option>`).join("")}</select></label></div><div data-assist>${input("等待人工回复超时（秒；0 表示不回落 AI）", "fallback_timeout", c.fallback_timeout, "number")}</div><p class="small">人工回复、转交和主动接管会停止 AI；工作时间沿用团队管理设置，会话由客服手动分配。修改接待策略会终止该平台正在生成的 AI 回复。</p></section><section data-platform-section="appearance"><h3>组件外观与欢迎语</h3>${input("主题色", "themeColor", w.themeColor, "color")}<div class="field"><label>语言跟随方式<select name="language">${Object.entries(
+        { auto: "跟随网页 / 客户端", "zh-CN": "简体中文", en: "English" },
+      )
+        .map(
+          ([k, v]) =>
+            `<option value="${k}" ${w.language === k ? "selected" : ""}>${v}</option>`,
+        )
+        .join(
+          "",
+        )}</select></label></div><div class="field"><label>主题跟随方式<select name="theme">${Object.entries(
+        { auto: "跟随网页 / 客户端", light: "浅色", dark: "深色" },
+      )
+        .map(
+          ([k, v]) =>
+            `<option value="${k}" ${w.theme === k ? "selected" : ""}>${v}</option>`,
+        )
+        .join(
+          "",
+        )}</select></label></div><label class="retrieval-checkbox"><input type="checkbox" name="followHostColor" ${w.followHostColor !== false ? "checked" : ""}>跟随网页 / 客户端主题色</label>${input("Logo HTTPS 地址（选填）", "logoUrl", w.logoUrl)}<div class="field"><label>悬浮位置<select name="position">${["bottom-right", "bottom-left", "top-right", "top-left"].map((v, i) => `<option value="${v}" ${v === w.position ? "selected" : ""}>${["右下角", "左下角", "右上角", "左上角"][i]}</option>`).join("")}</select></label></div><div class="field"><label>欢迎语（留空人工接待（默认））<textarea name="welcomeMessage" rows="3" maxlength="3000">${E(w.welcomeMessage)}</textarea></label></div><p class="small">颜色、Logo 与位置用于网页组件；Flutter 外观仍由宿主组件配置。</p><div id="widget-design-preview"><header><strong data-preview-title></strong></header><div class="platform-preview-messages"><p data-preview-welcome></p><div class="platform-preview-question">你好，我想咨询一个问题</div><p class="small">客服会在这里回复你</p></div><div class="platform-preview-composer">输入你的问题…</div></div></section><section data-platform-section="integration">${existing ? `<details><summary>嵌入代码与接入标识</summary><pre class="code">${E(code())}</pre><div class="code">${E(c.public_key)}</div><button type="button" id="rotate-platform-key">重新生成接入标识</button>${c.type === "sdk" ? '<p><a href="/fastcat_support_sdk.zip" download>下载 Flutter SDK 与示例</a></p>' : `<p><a href="/embed-demo.html?appKey=${c.public_key}" target="_blank" rel="noopener">打开实际嵌入演示 ↗</a></p>`}</details>` : '<p class="small">保存后即可复制接入代码；新平台默认停用。</p>'}</section>`,
       "保存",
       async (f) => {
         const payload = {
@@ -218,6 +203,9 @@ export function createAccessUI({ api, E, modal, toast }) {
             .filter(Boolean),
           widget: {
             themeColor: f.themeColor,
+            language: f.language,
+            theme: f.theme,
+            followHostColor: !!f.followHostColor,
             position: f.position,
             welcomeMessage: f.welcomeMessage,
             logoUrl: f.logoUrl,
@@ -235,7 +223,6 @@ export function createAccessUI({ api, E, modal, toast }) {
           },
         );
         selected = saved.id || c.id || null;
-        showArchived = false;
         toast("平台已保存");
         await render();
       },
