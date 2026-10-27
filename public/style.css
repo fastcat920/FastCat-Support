@@ -3693,3 +3693,109 @@ label:has(> input:is([type="checkbox"], [type="radio"])) {
     grid-template-columns: minmax(68px, 1fr) minmax(0, 1.5fr);
   }
 }
+
+/* Compact message composition shared by visitors and staff. */
+.widget-shell .composer,
+.inbox-v3 .composer {
+  padding: 8px 10px;
+  border-radius: 14px;
+}
+.widget-shell .composer textarea,
+.inbox-v3 .composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  max-height: 120px;
+  padding: 8px;
+  line-height: 22px;
+  overflow-y: auto;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  resize: none;
+}
+.composer:focus-within {
+  border-color: var(--brand);
+}
+.composer textarea:focus {
+  outline: none;
+}
+.widget-shell .composer-footer,
+.inbox-v3 .composer-footer {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.widget-shell .composer-footer .row,
+.inbox-v3 .composer-footer .row {
+  min-width: 0;
+  flex: 1;
+  flex-wrap: nowrap;
+  gap: 3px;
+  overflow-x: auto;
+}
+.composer-footer .quiet {
+  white-space: nowrap;
+}
+.widget-shell .send-hint,
+.inbox-v3 .composer .send-hint {
+  flex: none;
+  order: initial;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.composer-footer .primary {
+  flex: none;
+}
+.composer-mode {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  flex: none;
+  border-radius: 8px;
+  padding: 3px;
+  background: var(--bg);
+  white-space: nowrap;
+}
+.composer-mode input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.composer-mode span {
+  padding: 5px 7px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.composer-mode .mode-public,
+.internal-mode .composer-mode .mode-note {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 4px #0002;
+}
+.internal-mode .composer-mode .mode-public {
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+.composer-mode:focus-within {
+  outline: 2px solid var(--brand);
+}
+.widget-header-meta {
+  gap: 8px;
+}
+.widget-header-meta #widget-service-status {
+  margin-right: auto;
+}
+#widget-sound {
+  min-width: 32px;
+  font-size: 18px;
+}
+@media (max-width: 900px) {
+  .widget-shell .send-hint,
+  .inbox-v3 .composer .send-hint {
+    display: none;
+  }
+}

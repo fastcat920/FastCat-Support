@@ -532,7 +532,7 @@ export function createInboxUI({
     const c = data.conversation;
     if (initial) {
       document.querySelector("#chat").innerHTML =
-        `<div class="chat-head" id="chat-head"></div><div class="messages" id="messages"></div><div id="staff-outbox"></div><div id="automation-banner" class="automation-banner" hidden></div><form class="composer" id="reply-form"><input id="staff-file" type="file" hidden><textarea id="reply" name="body" placeholder="输入回复内容…" aria-label="回复消息" required maxlength="10000"></textarea><div class="composer-footer"><label class="small row"><input class="switch" name="internal" type="checkbox" ${internal.get(id) ? "checked" : ""}>内部备注</label><div class="row"><button type="button" class="quiet small" id="upload-attachment" aria-label="上传并发送附件">⌁ 附件</button><button type="button" class="quiet small" id="quick-replies">快捷回复</button><button type="button" class="quiet small" id="ai-draft">✧ AI 草稿</button><span class="small send-hint">Enter 发送 · Shift+Enter 换行</span><button class="primary" id="send-reply" type="submit">发送 ↗</button></div></div></form>`;
+        `<div class="chat-head" id="chat-head"></div><div class="messages" id="messages"></div><div id="staff-outbox"></div><div id="automation-banner" class="automation-banner" hidden></div><form class="composer" id="reply-form"><input id="staff-file" type="file" hidden><textarea id="reply" name="body" placeholder="输入回复内容…" aria-label="回复消息" required maxlength="10000"></textarea><div class="composer-footer"><div class="row composer-actions"><label class="composer-mode"><input name="internal" type="checkbox" ${internal.get(id) ? "checked" : ""} aria-label="内部备注"><span class="mode-public">公开回复</span><span class="mode-note">内部备注</span></label><button type="button" class="quiet small" id="upload-attachment" aria-label="上传并发送附件">⌁ 附件</button><button type="button" class="quiet small" id="quick-replies">快捷回复</button><button type="button" class="quiet small" id="ai-draft">✧ AI 草稿</button></div><span class="small send-hint">Enter 发送 · Shift+Enter 换行</span><button class="primary" id="send-reply" type="submit">发送 ↗</button></div></form>`;
       document.querySelector("#upload-attachment").onclick = () =>
         document.querySelector("#staff-file").click();
       document.querySelector("#staff-file").onchange = safe(async (event) => {
@@ -576,7 +576,10 @@ export function createInboxUI({
             internal: note,
           });
           drafts.delete(id);
-          if (state.active === id) form.body.value = "";
+          if (state.active === id) {
+            form.body.value = "";
+            form.body.dispatchEvent(new Event("input", { bubbles: true }));
+          }
         } finally {
           sending.delete(id);
         }
@@ -814,7 +817,7 @@ export function createInboxUI({
                   .replaceAll("{{agent.name}}", getMe().name),
                 input = document.querySelector("#reply");
               input.value = (input.value ? input.value + "\n" : "") + text;
-              drafts.set(c.id, input.value);
+              input.dispatchEvent(new Event("input", { bubbles: true }));
               o.querySelector("[data-close]").click();
               input.focus();
             }),

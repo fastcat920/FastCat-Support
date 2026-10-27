@@ -197,7 +197,7 @@ function chat() {
   readCursor = 0;
   outbox?.close();
   root.innerHTML =
-    '<div class="messages" id="messages"></div><p class="error" role="alert"></p><div id="widget-outbox"></div><form class="composer"><textarea name="body" maxlength="10000" aria-label="消息内容" placeholder="输入你想咨询的问题…"></textarea><input id="widget-file" type="file" hidden><div class="composer-footer"><div class="row"><button id="widget-sound" type="button" class="quiet small" aria-pressed="true" title="收到新消息时播放声音">声音：开</button><button id="upload-file" type="button" class="quiet small" aria-label="上传并发送附件">⌁ 附件</button></div><span class="small send-hint">Enter 发送 · Shift+Enter 换行</span><button class="primary" type="submit">发送 ↗</button></div></form>';
+    '<div class="messages" id="messages"></div><p class="error" role="alert"></p><div id="widget-outbox"></div><form class="composer"><textarea name="body" maxlength="10000" aria-label="消息内容" placeholder="输入你想咨询的问题…"></textarea><input id="widget-file" type="file" hidden><div class="composer-footer"><div class="row"><button id="upload-file" type="button" class="quiet small" aria-label="上传并发送附件">⌁ 附件</button></div><span class="small send-hint">Enter 发送 · Shift+Enter 换行</span><button class="primary" type="submit">发送 ↗</button></div></form>';
   outbox = createOutbox({
     owner: "visitor:" + currentSession.id,
     canSend: () => session?.id === currentSession.id,
@@ -241,7 +241,12 @@ function chat() {
   bindComposer(root.querySelector("form"));
   document.querySelector("#widget-sound").onclick = (e) => {
     const enabled = messageSound.toggle();
-    e.currentTarget.textContent = enabled ? "声音：开" : "声音：关";
+    e.currentTarget.textContent = enabled ? "♪" : "♪̸";
+    e.currentTarget.setAttribute(
+      "aria-label",
+      enabled ? "声音：开" : "声音：关",
+    );
+    e.currentTarget.title = enabled ? "声音：开" : "声音：关";
     e.currentTarget.setAttribute("aria-pressed", String(enabled));
   };
   document.querySelector("#upload-file").onclick = () =>
@@ -257,6 +262,7 @@ function chat() {
     try {
       await outbox.enqueue({ conversationId: session.id, body: text });
       form.body.value = "";
+      form.body.dispatchEvent(new Event("input", { bubbles: true }));
     } catch (err) {
       error(err.message);
     } finally {

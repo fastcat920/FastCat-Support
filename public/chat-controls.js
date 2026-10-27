@@ -10,6 +10,12 @@ export function shouldSendMessage(event) {
 // Shared native composer controls for the website and staff workspace.
 export function bindComposer(form) {
   const input = form.querySelector("textarea");
+  const resize = () => {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 120) + "px";
+  };
+  input.addEventListener("input", resize);
+  resize();
   input.addEventListener("keydown", (e) => {
     if (shouldSendMessage(e)) {
       e.preventDefault();
@@ -22,6 +28,7 @@ export function bindComposer(form) {
   trigger.className = "quiet emoji-trigger";
   trigger.textContent = "☺";
   trigger.setAttribute("aria-label", "选择表情");
+  trigger.title = "选择表情";
   trigger.setAttribute("aria-expanded", "false");
   const panel = document.createElement("div");
   panel.className = "emoji-picker";
@@ -92,16 +99,6 @@ export function bindComposer(form) {
   });
   form.querySelector(".composer-footer div.row").prepend(trigger);
   form.append(panel);
-  if (form.id === "reply-form") {
-    const toolbar = document.createElement("div");
-    toolbar.className = "composer-tools";
-    toolbar.append(trigger);
-    for (const id of ["upload-attachment", "quick-replies", "ai-draft"]) {
-      const button = form.querySelector("#" + id);
-      if (button) toolbar.append(button);
-    }
-    form.prepend(toolbar);
-  }
 }
 export function createMessageSound() {
   let context,
