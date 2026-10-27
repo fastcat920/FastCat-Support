@@ -601,7 +601,6 @@ export function createInboxUI({
       c.subject,
       c.status,
       c.assignee,
-      c.priority,
       state.members,
       c.name,
     ]);
@@ -693,7 +692,6 @@ export function createInboxUI({
       statusNames[c.status];
     document.querySelector("#visitor-assignee").textContent =
       c.assigneeName || "未分配";
-    document.querySelector("#visitor-priority").value = c.priority;
     if (!state.notesDirty)
       document.querySelector("#visitor-notes").value = c.notes || "";
   }
@@ -740,9 +738,6 @@ export function createInboxUI({
         .join(
           "",
         )}</select></div><label for="visitor-notes" class="small">客户备注</label><textarea id="visitor-notes" placeholder="记录需要交接的信息…"></textarea><button id="save-notes">保存备注</button></section>`;
-    document.querySelector("#visitor-priority").onchange = safe((e) =>
-      change({ priority: e.target.value }),
-    );
     document.querySelector("#visitor-notes").value =
       noteDrafts.get(c.id) ?? c.notes ?? "";
     document.querySelector("#visitor-notes").oninput = (e) => {
@@ -760,16 +755,7 @@ export function createInboxUI({
   function visitorDialog(c) {
     modal(
       "访客与会话",
-      `<h3>${E(c.name)}</h3><p class="small">${E(c.email || "未提供邮箱")} · 访客提供</p>${profileDetails(c.profile || {})}<div class="field"><label for="dialog-priority">优先级</label><select name="priority" id="dialog-priority">${Object.entries(
-        priorityNames,
-      )
-        .map(
-          ([k, v]) =>
-            `<option value="${k}" ${c.priority === k ? "selected" : ""}>${v}</option>`,
-        )
-        .join(
-          "",
-        )}</select></div><div class="field"><label for="dialog-status">状态</label><select name="status" id="dialog-status">${Object.entries(
+      `<h3>${E(c.name)}</h3><p class="small">${E(c.email || "未提供邮箱")} · 访客提供</p>${profileDetails(c.profile || {})}<div class="field"><label for="dialog-status">状态</label><select name="status" id="dialog-status">${Object.entries(
         statusNames,
       )
         .map(

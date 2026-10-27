@@ -3647,6 +3647,50 @@ label:has(> input:is([type="checkbox"], [type="radio"])) {
   border-bottom: 1px solid var(--line);
   min-width: 0;
 }
+.inbox-v3 .visitor-panel {
+  padding: 22px 20px;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+}
+.inbox-v3 .visitor-profile-head .avatar {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  font-size: 20px;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.inbox-v3 .visitor-info-section textarea {
+  width: 100%;
+  min-height: 104px;
+  margin: 8px 0;
+  resize: vertical;
+}
+.inbox-v3 .visitor-info-section > button {
+  width: 100%;
+}
+.inbox-v3 .chat-head {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.inbox-v3 .chat-heading {
+  min-width: 0;
+}
+.inbox-v3 .chat-heading strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inbox-v3 .chat-actions {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.inbox-v3 .chat-actions select,
+.inbox-v3 .chat-actions button {
+  min-height: 34px;
+}
 .visitor-profile-head h2 {
   margin: 0 0 4px;
   overflow-wrap: anywhere;
