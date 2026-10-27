@@ -1,4 +1,4 @@
-const CACHE = "fastcat-shell-v021b";
+const CACHE = "fastcat-shell-v022";
 const FILES = [
   "/",
   "/widget",

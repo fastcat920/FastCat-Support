@@ -15,6 +15,8 @@ export function createAccessUI({ api, E, modal, toast }) {
     position: "bottom-right",
     welcomeMessage: "",
     logoUrl: "",
+    launcherIconUrl: "",
+    allowLocalFilePreview: false,
   };
   const modeName = (mode) =>
     ({
@@ -152,11 +154,14 @@ export function createAccessUI({ api, E, modal, toast }) {
       return;
     const code = () =>
       c.type === "web"
-        ? `<script src="${location.origin}/embed.js" data-app-key="${c.public_key}" defer></script>`
+        ? `<script src="${location.origin}/embed.js" data-app-key="${c.public_key}" charset="utf-8" defer></script>`
         : `final support = FastCatClient(\n  baseUrl: Uri.parse('${location.origin}'),\n  appKey: '${c.public_key}',\n);\nawait support.start(name: '客户称呼');\n// FastCatChat(client: support)`;
+    let uploadedIcon = w.launcherIconUrl.startsWith("data:")
+      ? w.launcherIconUrl
+      : "";
     const o = platformForm(
       existing ? c.name + " 配置" : "添加网页 / SDK 平台",
-      `<section data-platform-section="basic">${!existing ? '<div class="field"><label>平台类型<select name="type"><option value="web">网页端</option><option value="sdk">Flutter / Dart SDK</option></select></label></div>' : ""}${input("平台名称", "name", c.name)}${input("组件标题", "title", c.title)}<label><input type="checkbox" name="enabled" ${c.enabled ? "checked" : ""}> 启用平台</label><div class="field"><label>允许的网站来源（每行一个完整 origin）<textarea name="origins" rows="2" placeholder="https://www.example.com">${E(c.origins.join("\n"))}</textarea></label><p class="small">网页嵌入与 Flutter Web 需要配置；原生 SDK 无需来源。</p></div></section><section data-platform-section="ai"><h3>AI 接待策略</h3><div class="field"><label>接待模式<select name="ai_mode">${Object.entries(
+      `<section data-platform-section="basic">${!existing ? '<div class="field"><label>平台类型<select name="type"><option value="web">网页端</option><option value="sdk">Flutter / Dart SDK</option></select></label></div>' : ""}${input("平台名称", "name", c.name)}${input("组件标题", "title", c.title)}<label><input type="checkbox" name="enabled" ${c.enabled ? "checked" : ""}> 启用平台</label><div class="field"><label>允许的网站来源（每行一个完整 origin）<textarea name="origins" rows="2" placeholder="https://www.example.com">${E(c.origins.join("\n"))}</textarea></label><p class="small">网页嵌入与 Flutter Web 需要配置；原生 SDK 无需来源。</p><div data-local-preview><label class="retrieval-checkbox"><input type="checkbox" name="allowLocalFilePreview" ${w.allowLocalFilePreview ? "checked" : ""}>允许本地文件预览（file://）</label><p class="small">本地文件预览会允许来源为 null 的页面访问该平台；正式网站请配置具体来源。</p></div></div></section><section data-platform-section="ai"><h3>AI 接待策略</h3><div class="field"><label>接待模式<select name="ai_mode">${Object.entries(
         {
           inherit: "人工接待（默认）",
           auto: "AI 自动接待",
@@ -188,7 +193,7 @@ export function createAccessUI({ api, E, modal, toast }) {
         )
         .join(
           "",
-        )}</select></label></div>${input("Logo HTTPS 地址（选填）", "logoUrl", w.logoUrl)}<div class="field"><label>悬浮位置<select name="position">${["bottom-right", "bottom-left", "top-right", "top-left"].map((v, i) => `<option value="${v}" ${v === w.position ? "selected" : ""}>${["右下角", "左下角", "右上角", "左上角"][i]}</option>`).join("")}</select></label></div><div class="field"><label>欢迎语（留空人工接待（默认））<textarea name="welcomeMessage" rows="3" maxlength="3000">${E(w.welcomeMessage)}</textarea></label></div><p class="small">主题色使用后台配置；语言和明暗模式可跟随网页或客户端。Logo 与位置用于网页组件。</p><div id="widget-design-preview"><header><strong data-preview-title></strong></header><div class="platform-preview-messages"><p data-preview-welcome></p><div class="platform-preview-question">你好，我想咨询一个问题</div><p class="small">客服会在这里回复你</p></div><div class="platform-preview-composer">输入你的问题…</div></div></section><section data-platform-section="integration">${existing ? `<details><summary>嵌入代码与接入标识</summary><pre class="code">${E(code())}</pre><div class="code">${E(c.public_key)}</div><button type="button" id="rotate-platform-key">重新生成接入标识</button>${c.type === "sdk" ? '<p><a href="/fastcat_support_sdk.zip" download>下载 Flutter SDK 与示例</a></p>' : `<p><a href="/embed-demo.html?appKey=${c.public_key}" target="_blank" rel="noopener">打开实际嵌入演示 ↗</a></p>`}</details>` : '<p class="small">保存后即可复制接入代码；新平台默认停用。</p>'}</section>`,
+        )}</select></label></div>${input("客服入口图标 HTTPS 地址（选填）", "launcherIconUrl", w.launcherIconUrl.startsWith("data:") ? "" : w.launcherIconUrl)}<div class="field"><label>上传客服入口图标<input id="launcher-icon-file" type="file" accept="image/png,image/jpeg,image/webp"></label><button type="button" id="clear-launcher-icon">使用默认图标</button><span id="launcher-icon-status" class="small">${w.launcherIconUrl.startsWith("data:") ? "已上传图标" : ""}</span></div><p class="small">留空使用项目图标；建议使用正方形透明 PNG 或 WebP 图片。打开会话后显示关闭图标。</p>${input("Logo HTTPS 地址（选填）", "logoUrl", w.logoUrl)}<div class="field"><label>悬浮位置<select name="position">${["bottom-right", "bottom-left", "top-right", "top-left"].map((v, i) => `<option value="${v}" ${v === w.position ? "selected" : ""}>${["右下角", "左下角", "右上角", "左上角"][i]}</option>`).join("")}</select></label></div><div class="field"><label>欢迎语（留空人工接待（默认））<textarea name="welcomeMessage" rows="3" maxlength="3000">${E(w.welcomeMessage)}</textarea></label></div><p class="small">主题色使用后台配置；语言和明暗模式可跟随网页或客户端。Logo 与位置用于网页组件。</p><div id="widget-design-preview"><header><strong data-preview-title></strong></header><div class="platform-preview-messages"><p data-preview-welcome></p><div class="platform-preview-question">你好，我想咨询一个问题</div><p class="small">客服会在这里回复你</p></div><div class="platform-preview-composer">输入你的问题…</div></div></section><section data-platform-section="integration">${existing ? `<details><summary>嵌入代码与接入标识</summary><pre class="code">${E(code())}</pre><div class="code">${E(c.public_key)}</div><button type="button" id="rotate-platform-key">重新生成接入标识</button>${c.type === "sdk" ? '<p><a href="/fastcat_support_sdk.zip" download>下载 Flutter SDK 与示例</a></p>' : `<p><a href="/embed-demo.html?appKey=${c.public_key}" target="_blank" rel="noopener">打开实际嵌入演示 ↗</a></p>`}</details>` : '<p class="small">保存后即可复制接入代码；新平台默认停用。</p>'}</section>`,
       "保存",
       async (f) => {
         const payload = {
@@ -207,6 +212,8 @@ export function createAccessUI({ api, E, modal, toast }) {
             position: f.position,
             welcomeMessage: f.welcomeMessage,
             logoUrl: f.logoUrl,
+            launcherIconUrl: f.launcherIconUrl.trim() || uploadedIcon,
+            allowLocalFilePreview: !!f.allowLocalFilePreview,
           },
           ai_mode: f.ai_mode,
           agent_id: f.agent_id || "",
@@ -225,11 +232,66 @@ export function createAccessUI({ api, E, modal, toast }) {
         await render();
       },
     );
+    const iconFile = o.querySelector("#launcher-icon-file"),
+      iconURL = o.querySelector('[name="launcherIconUrl"]'),
+      iconStatus = o.querySelector("#launcher-icon-status");
+    iconURL.addEventListener("input", () => {
+      uploadedIcon = "";
+      iconStatus.textContent = "";
+    });
+    o.querySelector("#clear-launcher-icon").onclick = () => {
+      uploadedIcon = "";
+      iconURL.value = "";
+      iconFile.value = "";
+      iconStatus.textContent = "";
+    };
+    iconFile.onchange = async () => {
+      const file = iconFile.files[0];
+      if (!file) return;
+      const submit = o.querySelector("button[type=submit]");
+      submit.disabled = true;
+      try {
+        if (
+          file.size > 5 * 1024 * 1024 ||
+          !["image/png", "image/jpeg", "image/webp"].includes(file.type)
+        )
+          throw Error("请选择 5 MB 以内的 PNG、JPEG 或 WebP 图片");
+        const image = await createImageBitmap(file),
+          canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 192;
+        const side = Math.min(image.width, image.height);
+        canvas
+          .getContext("2d")
+          .drawImage(
+            image,
+            (image.width - side) / 2,
+            (image.height - side) / 2,
+            side,
+            side,
+            0,
+            0,
+            192,
+            192,
+          );
+        image.close();
+        uploadedIcon = canvas.toDataURL("image/webp", 0.85);
+        iconURL.value = "";
+        iconStatus.textContent = "已上传图标";
+      } catch (error) {
+        iconFile.value = "";
+        toast(error.message);
+      } finally {
+        submit.disabled = false;
+      }
+    };
     o.querySelectorAll("details").forEach((d) => (d.open = true));
     const update = () => {
       const form = o.querySelector("form"),
         mode = form.elements.ai_mode.value;
       o.querySelector("[data-assist]").hidden = mode !== "assist";
+      const isWeb = (form.elements.type?.value || c.type) === "web";
+      o.querySelector("[data-local-preview]").hidden = !isWeb;
+      form.elements.allowLocalFilePreview.disabled = !isWeb;
       const preview = o.querySelector("#widget-design-preview");
       preview.querySelector("header").style.background =
         form.elements.themeColor.value;

@@ -260,3 +260,80 @@ test("new site instances publish appearance, retain sessions across key rotation
     (await call("/api/access/channels")).data.some((c) => c.id === p.id),
   );
 });
+
+test("local file access is opt-in for web channels and custom icon URL is validated", async () => {
+  const channels = (await call("/api/access/channels")).data;
+  const web = channels.find((c) => c.type === "web");
+  const configPath = "/api/widget/config?appKey=" + web.public_key;
+  assert.equal(
+    (await call(configPath, "GET", undefined, { Origin: "null" })).status,
+    403,
+  );
+  assert.equal(
+    (
+      await call("/api/access/channels/" + web.id, "PUT", {
+        ...web,
+        widget: { ...web.widget, launcherIconUrl: "javascript:alert(1)" },
+        expectedRevision: web.revision,
+      })
+    ).status,
+    400,
+  );
+  const changed = await call("/api/access/channels/" + web.id, "PUT", {
+    ...web,
+    widget: {
+      ...web.widget,
+      allowLocalFilePreview: true,
+      launcherIconUrl: "https://assets.example.com/support.png",
+    },
+    expectedRevision: web.revision,
+  });
+  assert.equal(changed.status, 200);
+  const result = await call(configPath, "GET", undefined, { Origin: "null" });
+  assert.equal(result.status, 200);
+  assert.equal(result.headers.get("access-control-allow-origin"), "null");
+  assert.equal(
+    result.data.widget.launcherIconUrl,
+    "https://assets.example.com/support.png",
+  );
+  const page = await fetch(base + "/widget?appKey=" + web.public_key);
+  assert.match(
+    page.headers.get("content-security-policy"),
+    /frame-ancestors[^;]*file:/,
+  );
+  const script = await fetch(base + "/embed.js");
+  assert.match(script.headers.get("content-type"), /charset=utf-8/i);
+  assert.equal(script.headers.get("cache-control"), "no-cache");
+  const png =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6ZQAAAABJRU5ErkJggg==";
+  const invalid = await call("/api/access/channels/" + web.id, "PUT", {
+    ...changed.data,
+    widget: {
+      ...changed.data.widget,
+      launcherIconUrl: "data:image/png;base64,PHNjcmlwdD4=",
+    },
+    expectedRevision: changed.data.revision,
+  });
+  assert.equal(invalid.status, 400);
+  const uploaded = await call("/api/access/channels/" + web.id, "PUT", {
+    ...changed.data,
+    widget: { ...changed.data.widget, launcherIconUrl: png },
+    expectedRevision: changed.data.revision,
+  });
+  assert.equal(uploaded.status, 200);
+  assert.equal(
+    (await call(configPath, "GET", undefined, { Origin: "null" })).data.widget
+      .launcherIconUrl,
+    png,
+  );
+  const restored = await call("/api/access/channels/" + web.id, "PUT", {
+    ...uploaded.data,
+    widget: { ...uploaded.data.widget, allowLocalFilePreview: false },
+    expectedRevision: uploaded.data.revision,
+  });
+  assert.equal(restored.status, 200);
+  assert.equal(
+    (await call(configPath, "GET", undefined, { Origin: "null" })).status,
+    403,
+  );
+});

@@ -45,9 +45,10 @@ try {
 } catch {}
 window.addEventListener("message", (event) => {
   if (
-    !parentOrigin ||
     event.source !== parent ||
-    event.origin !== parentOrigin ||
+    !(parentOrigin && parentOrigin !== "null"
+      ? event.origin === parentOrigin
+      : appearanceConfig.allowLocalFilePreview && event.origin === "null") ||
     event.data?.type !== "fastcat:appearance"
   )
     return;
@@ -61,7 +62,7 @@ window.addEventListener("message", (event) => {
   };
   updateAppearance();
 });
-if (parent !== window && parentOrigin)
+if (parent !== window && parentOrigin && parentOrigin !== "null")
   parent.postMessage({ type: "fastcat:ready" }, parentOrigin);
 fetch(widgetURL("/config"))
   .then((r) => r.json())
@@ -70,6 +71,12 @@ fetch(widgetURL("/config"))
       document.querySelector(".widget-shell header h2").textContent = c.title;
     const w = c.widget || {};
     appearanceConfig = w;
+    if (
+      parent !== window &&
+      (!parentOrigin || parentOrigin === "null") &&
+      w.allowLocalFilePreview
+    )
+      parent.postMessage({ type: "fastcat:ready" }, "*");
     updateAppearance();
     if (w.logoUrl) {
       const image = document.createElement("img");

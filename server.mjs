@@ -254,7 +254,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("Referrer-Policy", "same-origin");
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' blob:; frame-ancestors 'self'",
+      "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' blob: data:; frame-ancestors 'self'",
     );
     const visitorCors = channels.cors(req, res, url);
     if (method === "OPTIONS" && p.startsWith("/api/widget")) {
@@ -267,7 +267,10 @@ const server = http.createServer(async (req, res) => {
       res.setHeader(
         "Content-Security-Policy",
         "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' blob: https:; frame-ancestors 'self' " +
-          channel.origins.join(" "),
+          channel.origins.join(" ") +
+          (channel.type === "web" && channel.widget.allowLocalFilePreview
+            ? " file:"
+            : ""),
       );
     }
     if (p === "/api/telegram/webhook" && method === "POST")
@@ -982,11 +985,12 @@ const server = http.createServer(async (req, res) => {
     try {
       const data = readFileSync(path);
       res.writeHead(200, {
+        ...(p === "/embed.js" ? { "Cache-Control": "no-cache" } : {}),
         "Content-Type":
           {
             ".html": "text/html; charset=utf-8",
-            ".css": "text/css",
-            ".js": "text/javascript",
+            ".css": "text/css; charset=utf-8",
+            ".js": "text/javascript; charset=utf-8",
             ".svg": "image/svg+xml",
           }[extname(path)] || "application/octet-stream",
       });

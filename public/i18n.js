@@ -872,6 +872,20 @@ english[
   "主题色使用后台配置；语言和明暗模式可跟随网页或客户端。Logo 与位置用于网页组件。"
 ] =
   "The accent color comes from this configuration. Language and light/dark mode can follow the website or app. Logo and position apply to website chat.";
+english["客服入口图标 HTTPS 地址（选填）"] =
+  "Launcher icon HTTPS URL (optional)";
+english[
+  "留空使用项目图标；建议使用正方形透明 PNG 或 WebP 图片。打开会话后显示关闭图标。"
+] =
+  "Leave empty for the project icon. A square transparent PNG or WebP is recommended. A close icon appears while chat is open.";
+english["允许本地文件预览（file://）"] = "Allow local file preview (file://)";
+english[
+  "本地文件预览会允许来源为 null 的页面访问该平台；正式网站请配置具体来源。"
+] =
+  "Local preview allows pages with a null origin to access this channel. Configure specific origins for production websites.";
+english["上传客服入口图标"] = "Upload launcher icon";
+english["使用默认图标"] = "Use default icon";
+english["已上传图标"] = "Icon uploaded";
 export function normalizeLanguage(value) {
   return /^en(?:-|$)/i.test(value || "") ? "en" : "zh-CN";
 }
