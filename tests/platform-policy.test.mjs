@@ -4,7 +4,11 @@ import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import { migrateFeatures } from "../lib/features.mjs";
-import { migrateManagement, insertStaffMessage } from "../lib/management.mjs";
+import {
+  migrateManagement,
+  insertStaffMessage,
+  updateConversation,
+} from "../lib/management.mjs";
 import { migrateMedia, insertVisitorMessage } from "../lib/media.mjs";
 import { migrateReceipts } from "../lib/receipts.mjs";
 import { migrateService, createService } from "../lib/service.mjs";
@@ -371,6 +375,149 @@ test("retired workspace rules cannot reactivate inherited platform reception", a
         )
         .get(c.id).n,
       0,
+    );
+  } finally {
+    x.close();
+  }
+});
+
+test("human handoff assigns available capacity and waits when every agent is full", () => {
+  const x = setup();
+  try {
+    x.db.prepare("UPDATE users SET capacity=1").run();
+    x.db
+      .prepare(
+        "INSERT INTO users(id,name,email,capacity) VALUES('b','客服乙','b@local.test',1)",
+      )
+      .run();
+    const base = x.channels
+      .list()
+      .find((c) => c.is_default && c.type === "web");
+    const a = x.conversation(base.id),
+      b = x.conversation(base.id),
+      waiting = x.conversation(base.id);
+    assert.equal(x.service.handoff(a.id, "访客请求人工").assignee, "admin");
+    const count = x.db
+      .prepare("SELECT count(*) n FROM messages WHERE conversation_id=?")
+      .get(a.id).n;
+    x.service.handoff(a.id, "访客请求人工");
+    assert.equal(
+      x.db
+        .prepare("SELECT count(*) n FROM messages WHERE conversation_id=?")
+        .get(a.id).n,
+      count,
+    );
+    assert.equal(x.service.handoff(b.id, "访客请求人工").assignee, "b");
+    assert.equal(x.service.handoff(waiting.id, "访客请求人工").assignee, "");
+    assert.equal(
+      x.db
+        .prepare("SELECT handoff_pending FROM conversations WHERE id=?")
+        .get(waiting.id).handoff_pending,
+      1,
+    );
+    x.db.prepare("UPDATE users SET availability='away' WHERE id='admin'").run();
+    x.db
+      .prepare("UPDATE conversations SET status='closed' WHERE id=?")
+      .run(a.id);
+    x.service.tick();
+    assert.equal(
+      x.db
+        .prepare("SELECT assignee FROM conversations WHERE id=?")
+        .get(waiting.id).assignee,
+      "",
+    );
+    x.db.prepare("UPDATE users SET capacity=2 WHERE id='b'").run();
+    x.service.tick();
+    assert.equal(
+      x.db
+        .prepare("SELECT assignee FROM conversations WHERE id=?")
+        .get(waiting.id).assignee,
+      "b",
+    );
+  } finally {
+    x.close();
+  }
+});
+test("handoff respects team membership, account availability and explicit manual unassignment", () => {
+  const x = setup();
+  try {
+    x.db
+      .prepare(
+        "INSERT INTO users(id,name,email,availability) VALUES('b','客服乙','b@local.test','offline')",
+      )
+      .run();
+    x.db.prepare("INSERT INTO teams VALUES('sales','售前','','2026')").run();
+    x.db.prepare("INSERT INTO team_members VALUES('sales','b')").run();
+    const base = x.channels
+      .list()
+      .find((c) => c.is_default && c.type === "web");
+    const c = x.conversation(base.id);
+    x.db
+      .prepare("UPDATE conversations SET team_id='sales' WHERE id=?")
+      .run(c.id);
+    assert.equal(x.service.handoff(c.id, "访客请求人工").assignee, "");
+    x.db
+      .prepare(
+        "UPDATE users SET availability='available',active=0 WHERE id='b'",
+      )
+      .run();
+    x.service.tick();
+    assert.equal(
+      x.db.prepare("SELECT assignee FROM conversations WHERE id=?").get(c.id)
+        .assignee,
+      "",
+    );
+    x.db.prepare("UPDATE users SET active=1 WHERE id='b'").run();
+    x.service.tick();
+    assert.equal(
+      x.db.prepare("SELECT assignee FROM conversations WHERE id=?").get(c.id)
+        .assignee,
+      "b",
+    );
+    updateConversation(x.db, x.admin, c.id, { assignee: "" });
+    x.service.tick();
+    assert.equal(
+      x.db.prepare("SELECT assignee FROM conversations WHERE id=?").get(c.id)
+        .assignee,
+      "",
+    );
+    assert.equal(
+      x.db
+        .prepare("SELECT handoff_pending FROM conversations WHERE id=?")
+        .get(c.id).handoff_pending,
+      0,
+    );
+  } finally {
+    x.close();
+  }
+});
+test("upgrade marks existing explicit handoff requests for assignment without claiming regular unassigned conversations", () => {
+  const x = setup();
+  try {
+    const base = x.channels
+      .list()
+      .find((c) => c.is_default && c.type === "web");
+    const waiting = x.conversation(base.id),
+      regular = x.conversation(base.id);
+    x.db
+      .prepare(
+        "UPDATE conversations SET handoff_reason='访客请求人工' WHERE id=?",
+      )
+      .run(waiting.id);
+    x.db.exec("ALTER TABLE conversations DROP COLUMN handoff_pending");
+    migrateService(x.db);
+    x.service.tick();
+    assert.equal(
+      x.db
+        .prepare("SELECT assignee FROM conversations WHERE id=?")
+        .get(waiting.id).assignee,
+      "admin",
+    );
+    assert.equal(
+      x.db
+        .prepare("SELECT assignee FROM conversations WHERE id=?")
+        .get(regular.id).assignee,
+      "",
     );
   } finally {
     x.close();

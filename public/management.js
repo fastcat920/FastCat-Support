@@ -198,6 +198,7 @@ export function createManagementUI({
         "ai.provider.save": "模型供应商配置",
         "service.settings": "更新接待设置",
         "team.hours": "更新团队工作时间",
+        "handoff.assign": "分配人工接待",
         "member.update": "更新成员",
         "invitation.create": "创建邀请",
         "invitation.revoke": "撤销邀请",
