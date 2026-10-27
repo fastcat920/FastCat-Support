@@ -44,11 +44,6 @@
                 : systemTheme.matches
                   ? "dark"
                   : "light"),
-      color:
-        script.dataset.themeColor ||
-        styles.getPropertyValue("--fastcat-primary").trim() ||
-        styles.getPropertyValue("--brand").trim() ||
-        document.querySelector('meta[name="theme-color"]')?.content,
     };
   };
   const sync = () => {
@@ -71,10 +66,7 @@
           ? "Close support"
           : "关闭客服";
     frame.title = en ? "Support" : "在线客服";
-    const color =
-      config.followHostColor !== false && /^#[0-9a-f]{6}$/i.test(h.color || "")
-        ? h.color
-        : config.themeColor;
+    const color = config.themeColor;
     if (/^#[0-9a-f]{6}$/i.test(color || "")) {
       button.style.background = color;
       const rgb = [1, 3, 5]
@@ -101,7 +93,7 @@
   });
   new MutationObserver(sync).observe(script, {
     attributes: true,
-    attributeFilter: ["data-language", "data-theme", "data-theme-color"],
+    attributeFilter: ["data-language", "data-theme"],
   });
   systemTheme.addEventListener("change", sync);
   window.addEventListener("languagechange", sync);

@@ -13,11 +13,7 @@ const syncHost = () => {
     document.querySelector("#host-language").value;
   document.documentElement.dataset.theme =
     document.querySelector("#host-theme").value;
-  document.documentElement.style.setProperty(
-    "--fastcat-primary",
-    document.querySelector("#host-color").value,
-  );
 };
-for (const id of ["host-language", "host-theme", "host-color"])
+for (const id of ["host-language", "host-theme"])
   document.querySelector("#" + id).addEventListener("input", syncHost);
 syncHost();

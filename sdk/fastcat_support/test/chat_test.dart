@@ -10,6 +10,10 @@ class FakeClient extends FastCatClient {
   final pages = StreamController<Map<String, dynamic>>.broadcast();
   final reads = StreamController<int>.broadcast();
   @override
+  Future<Map<String, dynamic>> configuration() async => {
+        'widget': {'themeColor': '#146355'}
+      };
+  @override
   int get readCursor => read;
   @override
   Stream<int> get readCursorStream => reads.stream;
@@ -47,7 +51,7 @@ class FakeClient extends FastCatClient {
 
 void main() {
   testWidgets(
-      'chat follows host English and dark theme and permits sending after closure',
+      'chat follows host English and dark mode, keeps backend accent and sends after closure',
       (tester) async {
     final c = FakeClient();
     final scheme = ColorScheme.fromSeed(
@@ -55,11 +59,12 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         theme: ThemeData.dark().copyWith(colorScheme: scheme),
         home: FastCatChat(client: c)));
+    await tester.pump();
     expect(find.text('Support'), findsOneWidget);
     expect(find.text('Talk to a person'), findsOneWidget);
     final context = tester.element(find.byType(TextField));
     expect(Theme.of(context).brightness, Brightness.dark);
-    expect(Theme.of(context).colorScheme.primary, scheme.primary);
+    expect(Theme.of(context).colorScheme.primary, const Color(0xff146355));
     c.pages.add({
       'messages': [],
       'nextCursor': 0,

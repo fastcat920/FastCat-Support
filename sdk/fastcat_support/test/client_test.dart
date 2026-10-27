@@ -22,6 +22,25 @@ class MemoryStore implements FastCatSessionStore {
 
 void main() {
   test(
+      'public configuration reads channel accent without requiring a visitor session',
+      () async {
+    final client = FastCatClient(
+        baseUrl: Uri.parse('https://support.example.com'),
+        appKey: 'channel-key',
+        client: MockClient((r) async {
+          expect(r.url.path, '/api/widget/config');
+          expect(r.url.queryParameters['appKey'], 'channel-key');
+          expect(r.headers.containsKey('authorization'), false);
+          return http.Response(
+              jsonEncode({
+                'widget': {'themeColor': '#146355'}
+              }),
+              200);
+        }));
+    expect((await client.configuration())['widget']['themeColor'], '#146355');
+    client.close();
+  });
+  test(
       'session persistence is scoped by server and platform; restored requests use visitor bearer',
       () async {
     final store = MemoryStore();

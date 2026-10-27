@@ -14,12 +14,7 @@ export function resolveAppearance(config = {}, host = {}, system = {}) {
         : system.dark
           ? "dark"
           : "light",
-    color:
-      config.followHostColor !== false && color(host.color)
-        ? host.color
-        : color(config.themeColor)
-          ? config.themeColor
-          : "#5b4ee8",
+    color: color(config.themeColor) ? config.themeColor : "#5b4ee8",
   };
 }
 export function applyAppearance({ theme, color }) {

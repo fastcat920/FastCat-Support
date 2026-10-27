@@ -111,7 +111,7 @@ export function createSettingsUI({
     }
     if (section === "general") {
       const p = await api("/preferences");
-      el.innerHTML = `<h2>通用</h2><div class="field"><label>界面语言<select id="settings-language"><option value="zh-CN">简体中文</option><option value="en">English</option><option value="system">跟随浏览器</option></select></label></div><div class="field"><label>主题模式<select id="settings-theme"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label></div><div class="field"><label>主题色<input id="settings-color" type="color" value="${E(p.themeColor)}"></label></div><p class="small">偏好随账号保存；访客端默认跟随所在网页或客户端的语言与主题。</p>`;
+      el.innerHTML = `<h2>通用</h2><div class="field"><label>界面语言<select id="settings-language"><option value="zh-CN">简体中文</option><option value="en">English</option><option value="system">跟随浏览器</option></select></label></div><div class="field"><label>主题模式<select id="settings-theme"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label></div><div class="field"><label>主题色<input id="settings-color" type="color" value="${E(p.themeColor)}"></label></div><p class="small">偏好随账号保存；访客端默认跟随所在网页或客户端的语言与明暗模式，主题色使用后台配置。</p>`;
       for (const [id, key] of [
         ["language", "language"],
         ["theme", "theme"],

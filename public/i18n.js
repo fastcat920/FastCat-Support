@@ -63,8 +63,8 @@ export const english = {
   主题色: "Accent color",
   主题已保存: "Appearance saved",
   主题色已保存: "Accent color saved",
-  "偏好随账号保存；访客端默认跟随所在网页或客户端的语言与主题。":
-    "Preferences are saved to your account. Visitor chat follows the host page or app language and appearance by default.",
+  "偏好随账号保存；访客端默认跟随所在网页或客户端的语言与明暗模式，主题色使用后台配置。":
+    "Preferences are saved to your account. Visitor chat follows the host language and light/dark mode. The accent color comes from the channel settings.",
   桌面通知: "Desktop notifications",
   声音通知: "Sound",
   页面在后台时提醒: "Notify in background",
@@ -458,7 +458,6 @@ export const english = {
   没有找到模型: "No models found",
   安装与接入: "Install & integrate",
   组件外观与欢迎语: "Chat appearance & welcome",
-  "跟随网页 / 客户端主题色": "Follow website / app accent color",
   "Logo HTTPS 地址（选填）": "Logo HTTPS URL (optional)",
   悬浮位置: "Launcher position",
   平台已保存: "Channel saved",
@@ -869,6 +868,10 @@ export const english = {
   导出当前会话筛选: "Export filtered conversations",
   "导出 CSV": "Export CSV",
 };
+english[
+  "主题色使用后台配置；语言和明暗模式可跟随网页或客户端。Logo 与位置用于网页组件。"
+] =
+  "The accent color comes from this configuration. Language and light/dark mode can follow the website or app. Logo and position apply to website chat.";
 export function normalizeLanguage(value) {
   return /^en(?:-|$)/i.test(value || "") ? "en" : "zh-CN";
 }

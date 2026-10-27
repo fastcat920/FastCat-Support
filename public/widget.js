@@ -58,7 +58,6 @@ window.addEventListener("message", (event) => {
         ? value.language.slice(0, 35)
         : undefined,
     theme: value.theme,
-    color: value.color,
   };
   updateAppearance();
 });

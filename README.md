@@ -197,6 +197,6 @@ Telegram 配置：Bot 需为开启话题超级群的管理员，并拥有管理�
 
 设置 → 通用可保存简体中文 / English、主题模式和主题色。在线状态统一为在线 / 忙碌 / 离线；团队成员管理集中调整状态与容量，不再创建团队。平台使用启用 / 停用管理，移除归档功能。客服完成会话后自动选择下一条；访客再次发送消息可继续原会话，按平台 AI 策略重新接待。
 
-网页嵌入默认跟随宿主语言与主题，推荐在宿主根元素设置 `lang="en"`、`data-theme="dark"` 和 CSS 变量 `--fastcat-primary: #146355`。也可在嵌入 script 上设置 `data-language="en"`、`data-theme="dark"`、`data-theme-color="#146355"`。平台 → 组件外观可固定语言 / 明暗模式并关闭跟随主题色。嵌入演示包含动态语言和主题控件。
+网页嵌入默认跟随宿主语言与主题，推荐在宿主根元素设置 `lang="en"`、`data-theme="dark"`。也可在嵌入 script 上设置 `data-language="en"`、`data-theme="dark"`。只同步语言和明暗模式，主题色始终取自后台平台配置。平台 → 组件外观可固定语言 / 明暗模式。嵌入演示包含动态语言和主题控件。
 
-Flutter SDK 0.14.0 的聊天和入口控件默认跟随应用 Localizations / ThemeData；`locale` 参数可固定为简中或英文。客户与 AI 的消息正文、自定义标题和知识内容保留原文。详情见 [SDK 文档](sdk/fastcat_support/README.md) 和 [验收记录](docs/ACCEPTANCE.md)。
+Flutter SDK 0.14.0 的聊天和入口控件默认跟随应用 Localizations 和明暗模式，主题色从后台读取；`locale` 参数可固定为简中或英文。客户与 AI 的消息正文、自定义标题和知识内容保留原文。详情见 [SDK 文档](sdk/fastcat_support/README.md) 和 [验收记录](docs/ACCEPTANCE.md)。

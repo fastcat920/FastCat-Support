@@ -323,12 +323,7 @@ test("platform appearance validation rejects executable URLs, unknown AI agents 
       }),
       (e) => e.status === 400,
     );
-    for (const widget of [
-      [],
-      { language: "fr" },
-      { theme: "unknown" },
-      { followHostColor: "yes" },
-    ])
+    for (const widget of [[], { language: "fr" }, { theme: "unknown" }])
       await assert.rejects(
         x.channel("off", { widget }),
         (e) => e.status === 400,

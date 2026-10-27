@@ -2,25 +2,31 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveAppearance } from "../public/appearance.js";
 import { normalizeLanguage } from "../public/i18n.js";
-test("appearance follows host language, brightness and accent; fixed configuration wins", () => {
+test("appearance follows host language and brightness but accent always comes from backend", () => {
   assert.deepEqual(
     resolveAppearance(
       {},
       { language: "en-US", theme: "dark", color: "#114466" },
     ),
-    { language: "en", theme: "dark", color: "#114466" },
+    { language: "en", theme: "dark", color: "#5b4ee8" },
   );
   assert.deepEqual(
     resolveAppearance(
       {
         language: "zh-CN",
         theme: "light",
-        followHostColor: false,
         themeColor: "#abcdef",
       },
       { language: "en", theme: "dark", color: "#114466" },
     ),
     { language: "zh-CN", theme: "light", color: "#abcdef" },
+  );
+  assert.deepEqual(
+    resolveAppearance(
+      { themeColor: "#146355" },
+      { language: "en", theme: "dark", color: "#1122ff" },
+    ),
+    { language: "en", theme: "dark", color: "#146355" },
   );
   assert.deepEqual(
     resolveAppearance(

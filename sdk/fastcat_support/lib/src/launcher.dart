@@ -1,3 +1,4 @@
+import 'appearance.dart';
 import 'strings.dart';
 import 'dart:async';
 import 'dart:typed_data';
@@ -31,6 +32,16 @@ class _FastCatLauncherState extends State<FastCatLauncher> {
   StreamSubscription<Map<String, dynamic>>? _pages;
   StreamSubscription<int>? _reads;
   bool _opening = false;
+  Color _primary = defaultSupportColor;
+  int _appearanceRevision = 0;
+  void _loadAppearance() {
+    final revision = ++_appearanceRevision;
+    widget.client.configuration().then((config) {
+      if (mounted && revision == _appearanceRevision)
+        setState(() => _primary = supportColor(config));
+    }).catchError((Object _) {});
+  }
+
   void _subscribe() {
     _reads = widget.client.readCursorStream.listen((seq) {
       if (mounted) setState(() => _unread.removeWhere((n) => n <= seq));
@@ -54,6 +65,7 @@ class _FastCatLauncherState extends State<FastCatLauncher> {
   @override
   void initState() {
     super.initState();
+    _loadAppearance();
     _subscribe();
   }
 
@@ -61,6 +73,8 @@ class _FastCatLauncherState extends State<FastCatLauncher> {
   void didUpdateWidget(covariant FastCatLauncher old) {
     super.didUpdateWidget(old);
     if (old.client != widget.client) {
+      _primary = defaultSupportColor;
+      _loadAppearance();
       _pages?.cancel();
       _reads?.cancel();
       _unread.clear();
@@ -101,6 +115,10 @@ class _FastCatLauncherState extends State<FastCatLauncher> {
               label: Text(_unread.length > 99 ? '99+' : '${_unread.length}'),
               child: FloatingActionButton(
                   heroTag: null,
+                  backgroundColor: _primary,
+                  foregroundColor: _primary.computeLuminance() > 0.179
+                      ? Colors.black
+                      : Colors.white,
                   tooltip: supportText(
                       context, '联系客服', 'Contact support', widget.locale),
                   onPressed: _opening ? null : _open,

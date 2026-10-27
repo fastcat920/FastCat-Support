@@ -1,3 +1,4 @@
+import 'appearance.dart';
 import 'strings.dart';
 import 'message_body.dart';
 import 'dart:async';
@@ -38,6 +39,16 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
   String? _error, _pendingId, _pendingBody;
   String _aiDraft = "";
   bool _typing = false;
+  Color _primary = defaultSupportColor;
+  int _appearanceRevision = 0;
+  void _loadAppearance() {
+    final revision = ++_appearanceRevision;
+    widget.client.configuration().then((config) {
+      if (mounted && revision == _appearanceRevision)
+        setState(() => _primary = supportColor(config));
+    }).catchError((Object _) {});
+  }
+
   StreamSubscription<FastCatConnectionStatus>? _connectionSubscription;
   FastCatConnectionStatus _connection = FastCatConnectionStatus.idle;
   bool _sending = false, _closed = false;
@@ -47,6 +58,7 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadAppearance();
     _subscribe();
   }
 
@@ -102,6 +114,8 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
   void didUpdateWidget(covariant FastCatChat old) {
     super.didUpdateWidget(old);
     if (old.client != widget.client) {
+      _primary = defaultSupportColor;
+      _loadAppearance();
       _subscription?.cancel();
       _connectionSubscription?.cancel();
       _typing = false;
@@ -161,127 +175,133 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-      appBar:
-          AppBar(title: Text(widget.title ?? _t('在线客服', 'Support')), actions: [
-        TextButton(
-            onPressed: _closed
-                ? null
-                : () async {
-                    try {
-                      await widget.client.requestHuman();
-                    } catch (e) {
-                      if (mounted) setState(() => _error = e.toString());
-                    }
-                  },
-            child: Text(_t('联系人工', 'Talk to a person')))
-      ]),
-      body: SafeArea(
-          child: Column(children: [
-        if (_connection == FastCatConnectionStatus.connecting ||
-            _connection == FastCatConnectionStatus.reconnecting)
-          Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(_connection == FastCatConnectionStatus.connecting
-                  ? _t('正在连接客服…', 'Connecting to support…')
-                  : _t('连接中断，正在重试…', 'Connection lost. Retrying…'))),
-        Expanded(
-            child: ListView.builder(
-                itemCount: _messages.length + (_typing ? 1 : 0),
-                itemBuilder: (context, i) {
-                  if (i == _messages.length)
-                    return Semantics(
-                        liveRegion: true,
-                        label: _t("AI 正在回复", "AI is replying"),
-                        child: Card(
-                            child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Text(_aiDraft.isEmpty
-                                    ? _t("正在思考…", "Thinking…")
-                                    : _aiDraft))));
-                  final m = _messages[i];
-                  return Align(
-                      alignment: m['role'] == 'visitor'
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Card(
-                          child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: m['attachment'] != null
-                                  ? TextButton(
-                                      onPressed: widget.onAttachment == null
-                                          ? null
-                                          : () async {
-                                              try {
-                                                final a =
-                                                    m['attachment'] as Map;
-                                                final bytes = await widget
-                                                    .client
-                                                    .downloadAttachment(
-                                                        a['id'] as String);
-                                                await widget.onAttachment!(
-                                                    a['filename'] as String,
-                                                    bytes);
-                                              } catch (e) {
-                                                if (mounted)
-                                                  setState(() =>
-                                                      _error = e.toString());
-                                              }
-                                            },
-                                      child: Text(
-                                          '${_t('附件', 'Attachment')}: ${(m['attachment'] as Map)['filename']}'))
-                                  : FastCatMessageBody(
-                                      body: m['body'] as String? ?? '',
-                                      plain: m['role'] == 'visitor',
-                                      locale: widget.locale,
-                                      onOpenLink: widget.onOpenLink,
-                                      onMessage: (value) => setState(
-                                          () => _text.text = value)))));
-                })),
-        if (_error != null)
-          Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(_error!,
-                  style:
-                      TextStyle(color: Theme.of(context).colorScheme.error))),
-        if (_closed)
-          Text(_t('会话已结束，发送消息即可继续咨询。',
-              'Conversation closed. Send a message to continue.')),
-        Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(children: [
-              if (widget.pickAttachment != null)
-                IconButton(
-                    tooltip: _t('发送附件', 'Send attachment'),
-                    onPressed: _sending || _pendingId != null
+  Widget build(BuildContext context) => Theme(
+      data: supportTheme(Theme.of(context), _primary),
+      child: Scaffold(
+          appBar: AppBar(
+              title: Text(widget.title ?? _t('在线客服', 'Support')),
+              actions: [
+                TextButton(
+                    onPressed: _closed
                         ? null
                         : () async {
                             try {
-                              final file = await widget.pickAttachment!();
-                              if (!mounted || file == null) return;
-                              _pendingFile = file;
-                              await _send();
+                              await widget.client.requestHuman();
                             } catch (e) {
                               if (mounted)
                                 setState(() => _error = e.toString());
                             }
                           },
-                    icon: const Icon(Icons.attach_file)),
-              Expanded(
-                  child: TextField(
-                      controller: _text,
-                      readOnly: _sending || _pendingBody != null,
-                      maxLength: 10000,
-                      minLines: 1,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                          labelText: _t('消息内容', 'Message'), counterText: ''))),
-              IconButton(
-                  tooltip: _pendingId != null
-                      ? _t('重试发送', 'Retry send')
-                      : _t('发送', 'Send'),
-                  onPressed: _sending ? null : _send,
-                  icon: Icon(_pendingId != null ? Icons.refresh : Icons.send))
-            ]))
-      ])));
+                    child: Text(_t('联系人工', 'Talk to a person')))
+              ]),
+          body: SafeArea(
+              child: Column(children: [
+            if (_connection == FastCatConnectionStatus.connecting ||
+                _connection == FastCatConnectionStatus.reconnecting)
+              Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(_connection == FastCatConnectionStatus.connecting
+                      ? _t('正在连接客服…', 'Connecting to support…')
+                      : _t('连接中断，正在重试…', 'Connection lost. Retrying…'))),
+            Expanded(
+                child: ListView.builder(
+                    itemCount: _messages.length + (_typing ? 1 : 0),
+                    itemBuilder: (context, i) {
+                      if (i == _messages.length)
+                        return Semantics(
+                            liveRegion: true,
+                            label: _t("AI 正在回复", "AI is replying"),
+                            child: Card(
+                                child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Text(_aiDraft.isEmpty
+                                        ? _t("正在思考…", "Thinking…")
+                                        : _aiDraft))));
+                      final m = _messages[i];
+                      return Align(
+                          alignment: m['role'] == 'visitor'
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: Card(
+                              child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: m['attachment'] != null
+                                      ? TextButton(
+                                          onPressed: widget.onAttachment == null
+                                              ? null
+                                              : () async {
+                                                  try {
+                                                    final a =
+                                                        m['attachment'] as Map;
+                                                    final bytes = await widget
+                                                        .client
+                                                        .downloadAttachment(
+                                                            a['id'] as String);
+                                                    await widget.onAttachment!(
+                                                        a['filename'] as String,
+                                                        bytes);
+                                                  } catch (e) {
+                                                    if (mounted)
+                                                      setState(() => _error =
+                                                          e.toString());
+                                                  }
+                                                },
+                                          child: Text(
+                                              '${_t('附件', 'Attachment')}: ${(m['attachment'] as Map)['filename']}'))
+                                      : FastCatMessageBody(
+                                          body: m['body'] as String? ?? '',
+                                          plain: m['role'] == 'visitor',
+                                          locale: widget.locale,
+                                          onOpenLink: widget.onOpenLink,
+                                          onMessage: (value) => setState(
+                                              () => _text.text = value)))));
+                    })),
+            if (_error != null)
+              Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(_error!,
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error))),
+            if (_closed)
+              Text(_t('会话已结束，发送消息即可继续咨询。',
+                  'Conversation closed. Send a message to continue.')),
+            Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(children: [
+                  if (widget.pickAttachment != null)
+                    IconButton(
+                        tooltip: _t('发送附件', 'Send attachment'),
+                        onPressed: _sending || _pendingId != null
+                            ? null
+                            : () async {
+                                try {
+                                  final file = await widget.pickAttachment!();
+                                  if (!mounted || file == null) return;
+                                  _pendingFile = file;
+                                  await _send();
+                                } catch (e) {
+                                  if (mounted)
+                                    setState(() => _error = e.toString());
+                                }
+                              },
+                        icon: const Icon(Icons.attach_file)),
+                  Expanded(
+                      child: TextField(
+                          controller: _text,
+                          readOnly: _sending || _pendingBody != null,
+                          maxLength: 10000,
+                          minLines: 1,
+                          maxLines: 4,
+                          decoration: InputDecoration(
+                              labelText: _t('消息内容', 'Message'),
+                              counterText: ''))),
+                  IconButton(
+                      tooltip: _pendingId != null
+                          ? _t('重试发送', 'Retry send')
+                          : _t('发送', 'Send'),
+                      onPressed: _sending ? null : _send,
+                      icon:
+                          Icon(_pendingId != null ? Icons.refresh : Icons.send))
+                ]))
+          ]))));
 }

@@ -90,6 +90,6 @@ FastCatChat 与可独立使用的 FastCatMessageBody 支持 Markdown、rich_text
 
 ## 语言、主题与会话继续
 
-`FastCatChat` 和 `FastCatLauncher` 默认跟随宿主 `MaterialApp` 的 `Localizations.locale`（简体中文或英文）和 `ThemeData`，包括明暗模式与 `colorScheme`。应用切换语言或主题后，聊天控件随之更新。可传入 `locale: const Locale('en')` 或 `locale: const Locale('zh', 'CN')` 固定聊天语言；自定义 `title` 和服务端消息不做机器翻译。
+`FastCatChat` 和 `FastCatLauncher` 默认跟随宿主 `MaterialApp` 的 `Localizations.locale`（简体中文或英文）和 `ThemeData` 的明暗模式。主题色通过公开的平台配置接口读取，始终使用后台设置，不跟随宿主的主色。应用切换语言或明暗模式后，聊天控件随之更新。可传入 `locale: const Locale('en')` 或 `locale: const Locale('zh', 'CN')` 固定聊天语言；自定义 `title` 和服务端消息不做机器翻译。
 
 客服结束会话后，输入和发送保持可用。下一条新消息会重新打开同一会话；服务端按该平台 AI 策略恢复接待，纯人工策略不被覆盖。失败消息仍使用原 clientId 重试，已成功消息的重试不会重开会话。

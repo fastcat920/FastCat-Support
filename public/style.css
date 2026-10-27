@@ -1503,12 +1503,13 @@ p {
   color: var(--text);
 }
 [data-theme="dark"] .primary {
-  background: #6b55d4;
-  color: #fff;
-  border-color: #6b55d4;
+  background: var(--brand);
+  color: var(--brand-fg);
+  border-color: var(--brand);
 }
 [data-theme="dark"] .primary:hover {
-  background: #7d65e8;
+  background: var(--brand);
+  filter: brightness(0.95);
 }
 [data-theme="dark"] button:hover {
   background: #262631;
@@ -1536,13 +1537,13 @@ p {
   background: transparent;
 }
 [data-theme="dark"] .conversation.active {
-  background: #282337;
+  background: var(--brand-soft);
 }
 [data-theme="dark"] .conversation {
   background: var(--surface);
 }
 [data-theme="dark"] .agent .bubble {
-  background: #6b55d4;
+  background: var(--brand);
 }
 [data-theme="dark"] .note .bubble {
   background: #392f1d;
@@ -2620,9 +2621,9 @@ p {
   font-size: 12px;
 }
 .widget-header-meta button {
-  border-color: #ffffff50;
-  background: #ffffff18;
-  color: #fff;
+  border-color: color-mix(in srgb, var(--brand-fg) 32%, transparent);
+  background: color-mix(in srgb, var(--brand-fg) 9%, transparent);
+  color: var(--brand-fg);
   font-size: 11px;
   padding: 7px 10px;
 }

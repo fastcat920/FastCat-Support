@@ -91,6 +91,9 @@ class FastCatClient {
     if (_session == null) throw StateError('Start or restore a session first');
   }
 
+  /// Public channel appearance; no visitor session is required.
+  Future<Map<String, dynamic>> configuration() => _json('/config');
+
   Future<Map<String, dynamic>> _json(String path,
       {String method = 'GET',
       Map<String, String> query = const {},
