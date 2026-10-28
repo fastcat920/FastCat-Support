@@ -13,7 +13,7 @@ import {
 import { migrateReceipts } from "../lib/receipts.mjs";
 import { migrateTelegram, createTelegram } from "../lib/telegram.mjs";
 import { migrateChannels, createChannels } from "../lib/channels.mjs";
-function setup() {
+function setup({ polling = false } = {}) {
   const db = new DatabaseSync(":memory:");
   db.exec(
     `PRAGMA foreign_keys=ON;CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT,email TEXT);CREATE TABLE visitors(id TEXT PRIMARY KEY,name TEXT);CREATE TABLE conversations(id TEXT PRIMARY KEY,visitor_id TEXT,subject TEXT,status TEXT DEFAULT 'open',assignee TEXT DEFAULT '',created TEXT,updated TEXT,handoff_reason TEXT DEFAULT '');CREATE TABLE messages(id TEXT PRIMARY KEY,conversation_id TEXT,role TEXT,body TEXT,created TEXT,source TEXT DEFAULT 'manual',read_at TEXT);`,
@@ -29,11 +29,13 @@ function setup() {
   const dir = mkdtempSync(join(tmpdir(), "fc-tg-"));
   const calls = [];
   let secret,
+    pendingUpdates = [],
     uncertain = false;
   const tg = createTelegram({
     db,
     keyPath: join(dir, "key"),
     autostart: false,
+    polling,
     fetcher: async (url, options) => {
       const method = url.split("/").at(-1);
       const payload =
@@ -44,19 +46,21 @@ function setup() {
       if (method === "setWebhook") secret = payload.secret_token;
       if (uncertain && method === "createForumTopic") throw Error("offline");
       let result =
-        method === "getMe"
-          ? { id: 123, username: "test" }
-          : method === "getChat"
-            ? { type: "supergroup", is_forum: true, title: "客服群" }
-            : method === "getChatMember"
-              ? { status: "administrator", can_manage_topics: true }
-              : method === "createForumTopic"
-                ? { message_thread_id: 77 }
-                : method === "getFile"
-                  ? { file_path: "files/a.txt", file_size: 3 }
-                  : method === "a.txt"
-                    ? null
-                    : { message_id: 9 };
+        method === "getUpdates"
+          ? pendingUpdates.filter((u) => u.update_id >= payload.offset)
+          : method === "getMe"
+            ? { id: 123, username: "test" }
+            : method === "getChat"
+              ? { type: "supergroup", is_forum: true, title: "客服群" }
+              : method === "getChatMember"
+                ? { status: "administrator", can_manage_topics: true }
+                : method === "createForumTopic"
+                  ? { message_thread_id: 77 }
+                  : method === "getFile"
+                    ? { file_path: "files/a.txt", file_size: 3 }
+                    : method === "a.txt"
+                      ? null
+                      : { message_id: 9 };
       return method === "a.txt"
         ? new Response("abc")
         : new Response(JSON.stringify({ ok: true, result }));
@@ -79,13 +83,13 @@ function setup() {
     });
     return result?.data;
   }
-  async function configure() {
+  async function configure(publicBaseUrl = "https://support.example.com") {
     return request("/api/access/telegram", "PUT", {
       enabled: true,
       chatId: "-100123456",
       botToken: "123456:" + "x".repeat(30),
       tokenEnv: "",
-      publicBaseUrl: "https://support.example.com",
+      publicBaseUrl,
       contextMessages: 1,
       operators: [{ telegramId: "456", userId: "admin" }],
       expectedRevision: 0,
@@ -120,6 +124,7 @@ function setup() {
     configure,
     webhook,
     msg,
+    setPending: (updates) => (pendingUpdates = updates),
     channels,
     uncertain: () => (uncertain = true),
     close() {
@@ -343,6 +348,51 @@ test("Platform keys, origin policy, revision conflict and disabling a channel ar
     assert.throws(
       () => x.channels.resolve(channel.public_key),
       (e) => e.status === 403,
+    );
+  } finally {
+    x.close();
+  }
+});
+
+test("polling durably queues pending Telegram replies without HTTPS and deduplicates retries", async () => {
+  const x = setup({ polling: true });
+  try {
+    await x.configure("");
+    x.db
+      .prepare(
+        "UPDATE conversations SET handoff_reason='请求人工' WHERE id='c'",
+      )
+      .run();
+    x.tg.observe("c");
+    await x.tg.tick();
+    x.setPending([x.msg(21), x.msg(22, { from: { id: 999 } })]);
+    await x.tg.poll();
+    assert.equal(
+      x.db.prepare("SELECT count(*) n FROM telegram_updates").get().n,
+      1,
+    );
+    assert.equal(
+      x.db.prepare("SELECT offset FROM telegram_poll_offsets").get().offset,
+      23,
+    );
+    await x.tg.tick();
+    assert.equal(
+      x.db
+        .prepare("SELECT count(*) n FROM messages WHERE source='telegram'")
+        .get().n,
+      1,
+    );
+    await x.tg.poll();
+    await x.tg.tick();
+    assert.equal(
+      x.db
+        .prepare("SELECT count(*) n FROM messages WHERE source='telegram'")
+        .get().n,
+      1,
+    );
+    assert.equal(
+      x.calls.filter((c) => c.method === "getUpdates").at(-1).payload.offset,
+      23,
     );
   } finally {
     x.close();
