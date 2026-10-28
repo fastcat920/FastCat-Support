@@ -16,6 +16,7 @@ class FastCatAttachment {
 /// Mount after start/restore. The host owns the client and session lifetime.
 class FastCatChat extends StatefulWidget {
   final FastCatClient client;
+  final bool showHeader;
   final String? title;
   final Locale? locale;
   final ValueChanged<Uri>? onOpenLink;
@@ -24,6 +25,7 @@ class FastCatChat extends StatefulWidget {
   const FastCatChat(
       {super.key,
       required this.client,
+      this.showHeader = true,
       this.title,
       this.locale,
       this.onOpenLink,
@@ -228,42 +230,64 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
   Widget build(BuildContext context) => Theme(
       data: _effectiveTheme(context),
       child: Scaffold(
-          appBar: AppBar(
-              backgroundColor: _primary,
-              foregroundColor: _primary.computeLuminance() > 0.179
-                  ? Colors.black
-                  : Colors.white,
-              title: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(widget.title ??
-                        (_configuredTitle?.isNotEmpty == true
-                            ? _configuredTitle!
-                            : _t('在线客服', 'Support'))),
-                    Text(_t('客服服务', 'Customer service'),
-                        style: const TextStyle(fontSize: 12)),
-                  ]),
-              actions: [
-                _logo(),
-                TextButton(
-                    onPressed: _closed
-                        ? null
-                        : () async {
-                            try {
-                              await widget.client.requestHuman();
-                            } catch (e) {
-                              if (mounted)
-                                setState(() => _error = e.toString());
-                            }
-                          },
-                    style: TextButton.styleFrom(
-                        foregroundColor: _primary.computeLuminance() > 0.179
-                            ? Colors.black
-                            : Colors.white),
-                    child: Text(_t('联系人工', 'Talk to a person')))
-              ]),
+          appBar: widget.showHeader
+              ? AppBar(
+                  backgroundColor: _primary,
+                  foregroundColor: _primary.computeLuminance() > 0.179
+                      ? Colors.black
+                      : Colors.white,
+                  title: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.title ??
+                            (_configuredTitle?.isNotEmpty == true
+                                ? _configuredTitle!
+                                : _t('在线客服', 'Support'))),
+                        Text(_t('客服服务', 'Customer service'),
+                            style: const TextStyle(fontSize: 12)),
+                      ]),
+                  actions: [
+                      _logo(),
+                      TextButton(
+                          onPressed: _closed
+                              ? null
+                              : () async {
+                                  try {
+                                    await widget.client.requestHuman();
+                                  } catch (e) {
+                                    if (mounted)
+                                      setState(() => _error = e.toString());
+                                  }
+                                },
+                          style: TextButton.styleFrom(
+                              foregroundColor:
+                                  _primary.computeLuminance() > 0.179
+                                      ? Colors.black
+                                      : Colors.white),
+                          child: Text(_t('联系人工', 'Talk to a person')))
+                    ])
+              : null,
+          backgroundColor:
+              _effectiveTheme(context).brightness == Brightness.dark
+                  ? const Color(0xff111216)
+                  : const Color(0xfff5f6fa),
           body: SafeArea(
               child: Column(children: [
+            if (!widget.showHeader)
+              Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                      onPressed: _closed
+                          ? null
+                          : () async {
+                              try {
+                                await widget.client.requestHuman();
+                              } catch (e) {
+                                if (mounted)
+                                  setState(() => _error = e.toString());
+                              }
+                            },
+                      child: Text(_t("联系人工", "Talk to a person")))),
             if (_connection == FastCatConnectionStatus.connecting ||
                 _connection == FastCatConnectionStatus.reconnecting)
               Padding(
@@ -301,100 +325,105 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
                           alignment: m['role'] == 'visitor'
                               ? Alignment.centerRight
                               : Alignment.centerLeft,
-                          child: Column(
-                              crossAxisAlignment: own
-                                  ? CrossAxisAlignment.end
-                                  : CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Card(
-                                    color: own
-                                        ? _primary
-                                        : Theme.of(context).colorScheme.surface,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(14)),
-                                    child: DefaultTextStyle.merge(
-                                        style: TextStyle(
-                                            color: own
-                                                ? (_primary.computeLuminance() >
-                                                        0.179
-                                                    ? Colors.black
-                                                    : Colors.white)
-                                                : Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurface),
-                                        child: Padding(
-                                            padding: const EdgeInsets.all(12),
-                                            child: m['attachment'] != null
-                                                ? TextButton(
-                                                    onPressed:
-                                                        widget.onAttachment ==
-                                                                null
-                                                            ? null
-                                                            : () async {
-                                                                try {
-                                                                  final a =
-                                                                      m['attachment']
-                                                                          as Map;
-                                                                  final bytes = await widget
-                                                                      .client
-                                                                      .downloadAttachment(
-                                                                          a['id']
+                          child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                  maxWidth:
+                                      MediaQuery.sizeOf(context).width * 0.88),
+                              child: Column(
+                                  crossAxisAlignment: own
+                                      ? CrossAxisAlignment.end
+                                      : CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Card(
+                                        color: own
+                                            ? _primary
+                                            : Theme.of(context)
+                                                .colorScheme
+                                                .surface,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(14)),
+                                        child: DefaultTextStyle.merge(
+                                            style: TextStyle(
+                                                color: own
+                                                    ? (_primary.computeLuminance() > 0.179
+                                                        ? Colors.black
+                                                        : Colors.white)
+                                                    : Theme.of(context)
+                                                        .colorScheme
+                                                        .onSurface),
+                                            child: Padding(
+                                                padding:
+                                                    const EdgeInsets.all(12),
+                                                child: m['attachment'] != null
+                                                    ? TextButton(
+                                                        onPressed:
+                                                            widget.onAttachment ==
+                                                                    null
+                                                                ? null
+                                                                : () async {
+                                                                    try {
+                                                                      final a =
+                                                                          m['attachment']
+                                                                              as Map;
+                                                                      final bytes = await widget
+                                                                          .client
+                                                                          .downloadAttachment(a['id']
                                                                               as String);
-                                                                  await widget
-                                                                          .onAttachment!(
-                                                                      a['filename']
-                                                                          as String,
-                                                                      bytes);
-                                                                } catch (e) {
-                                                                  if (mounted)
-                                                                    setState(() =>
-                                                                        _error =
-                                                                            e.toString());
-                                                                }
-                                                              },
-                                                    child: Text(
-                                                        '${_t('附件', 'Attachment')}: ${(m['attachment'] as Map)['filename']}'))
-                                                : FastCatMessageBody(
-                                                    body:
-                                                        m['body'] as String? ??
-                                                            '',
-                                                    plain:
-                                                        m['role'] == 'visitor',
-                                                    locale: _locale,
-                                                    onOpenLink:
-                                                        widget.onOpenLink,
-                                                    onMessage: (value) =>
-                                                        setState(() => _text
-                                                            .text = value))))),
-                                if (time.isNotEmpty)
-                                  Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8),
-                                      child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(time,
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .bodySmall),
-                                            if (own)
-                                              Semantics(
-                                                  label: read
-                                                      ? _t("已读", "Read")
-                                                      : _t("已发送", "Sent"),
-                                                  child: Text(
-                                                      read ? "  ✓✓" : "  ✓",
-                                                      style: TextStyle(
-                                                          color: read
-                                                              ? _primary
-                                                              : Theme.of(
-                                                                      context)
-                                                                  .colorScheme
-                                                                  .onSurfaceVariant)))
-                                          ]))
-                              ]));
+                                                                      await widget
+                                                                              .onAttachment!(
+                                                                          a['filename']
+                                                                              as String,
+                                                                          bytes);
+                                                                    } catch (e) {
+                                                                      if (mounted)
+                                                                        setState(() =>
+                                                                            _error =
+                                                                                e.toString());
+                                                                    }
+                                                                  },
+                                                        child: Text(
+                                                            '${_t('附件', 'Attachment')}: ${(m['attachment'] as Map)['filename']}'))
+                                                    : FastCatMessageBody(
+                                                        body:
+                                                            m['body'] as String? ??
+                                                                '',
+                                                        plain: m['role'] ==
+                                                            'visitor',
+                                                        locale: _locale,
+                                                        onOpenLink:
+                                                            widget.onOpenLink,
+                                                        onMessage: (value) =>
+                                                            setState(() =>
+                                                                _text.text = value))))),
+                                    if (time.isNotEmpty)
+                                      Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8),
+                                          child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(time,
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .bodySmall),
+                                                if (own)
+                                                  Semantics(
+                                                      label: read
+                                                          ? _t("已读", "Read")
+                                                          : _t("已发送", "Sent"),
+                                                      child: Text(
+                                                          read ? "  ✓✓" : "  ✓",
+                                                          style: TextStyle(
+                                                              color: read
+                                                                  ? _primary
+                                                                  : Theme.of(
+                                                                          context)
+                                                                      .colorScheme
+                                                                      .onSurfaceVariant)))
+                                              ]))
+                                  ])));
                     })),
             if (_error != null)
               Padding(

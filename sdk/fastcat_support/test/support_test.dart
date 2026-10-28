@@ -22,6 +22,27 @@ class MemoryStore implements FastCatSessionStore {
 
 void main() {
   testWidgets(
+      'embedded support retains host app bar during loading and email entry',
+      (tester) async {
+    final support = FastCatSupport(
+        baseUrl: Uri.parse('https://support.example.com'),
+        appKey: 'sdk',
+        store: MemoryStore(),
+        httpClient: MockClient((_) async => http.Response('{}', 200)));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            appBar: AppBar(title: const Text('客户端标题')),
+            body: FastCatSupportView(
+                support: support, locale: const Locale('zh', 'CN')))));
+    await tester.pumpAndSettle();
+    expect(find.text('客户端标题'), findsOneWidget);
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.text('开始咨询'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    support.close();
+  });
+
+  testWidgets(
       'remembers a manually supplied email and restores anonymous session',
       (tester) async {
     final store = MemoryStore();

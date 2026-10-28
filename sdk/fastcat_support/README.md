@@ -1,6 +1,6 @@
 # FastCat Support · Flutter / Dart SDK
 
-SDK 版本 0.16.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
+SDK 版本 0.16.1，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
 
 ## 安装与连接
 
@@ -44,6 +44,19 @@ await support.open(context);
 未传用户时使用匿名会话；没有可用邮箱时首次填写，凭据及邮箱默认通过 flutter_secure_storage 保存。用户 ID 用于本机隔离，并非服务端身份认证；不同设备无法仅凭邮箱恢复会话。`reset()` 清除当前身份的本地凭据和邮箱。旧 `FastCatClient`、`FastCatChat` 和 `FastCatLauncher` 仍可使用，旧会话不会自动迁移到新账号范围。附件选择和下载仍需宿主提供回调。Web 安全存储受浏览器和 HTTPS 环境约束；macOS 等平台需按 flutter_secure_storage 文档配置权限，真实设备需单独验收。
 
 聊天页读取后台的平台标题、Logo、主题色、语言及明暗模式；欢迎语由服务端会话消息提供。后台实时预览为网页组件，Flutter 是独立实现，布局和功能并非像素级完全一致。
+
+## 嵌入客户端页面（0.16.1）
+
+保留客户端原有标题和返回按钮，将 SDK 内容放进页面主体，支持自动恢复会话和首次邮箱输入：
+
+```dart
+Scaffold(
+  appBar: AppBar(title: const Text('客服')),
+  body: FastCatSupportView(support: support),
+);
+```
+
+嵌入模式默认不显示 SDK 标题栏；如需 SDK 标题栏，可设置 `showHeader: true`。原有 `support.open(context)` 行为保持兼容。账号切换时先移除旧页面，再创建对应账号的新 `FastCatSupport` 和视图。
 
 ## 消息与附件
 

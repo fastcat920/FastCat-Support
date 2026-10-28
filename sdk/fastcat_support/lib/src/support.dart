@@ -86,7 +86,8 @@ class FastCatSupport {
     _opening = true;
     try {
       await Navigator.of(context).push(MaterialPageRoute<void>(
-          builder: (_) => _SupportEntry(
+          builder: (_) => FastCatSupportView(
+              showHeader: true,
               support: this,
               title: title,
               locale: locale,
@@ -107,25 +108,29 @@ class FastCatSupport {
   void close() => client.close();
 }
 
-class _SupportEntry extends StatefulWidget {
+/// Embeddable content; host owns the surrounding Scaffold and navigation bar.
+class FastCatSupportView extends StatefulWidget {
   final FastCatSupport support;
   final String? title;
   final Locale? locale;
   final ValueChanged<Uri>? onOpenLink;
   final Future<FastCatAttachment?> Function()? pickAttachment;
   final Future<void> Function(String, Uint8List)? onAttachment;
-  const _SupportEntry(
-      {required this.support,
+  final bool showHeader;
+  const FastCatSupportView(
+      {super.key,
+      required this.support,
+      this.showHeader = false,
       this.title,
       this.locale,
       this.onOpenLink,
       this.pickAttachment,
       this.onAttachment});
   @override
-  State<_SupportEntry> createState() => _SupportEntryState();
+  State<FastCatSupportView> createState() => _SupportEntryState();
 }
 
-class _SupportEntryState extends State<_SupportEntry> {
+class _SupportEntryState extends State<FastCatSupportView> {
   final _email = TextEditingController();
   bool _busy = true, _ready = false, _needsEmail = false;
   String? _error;
@@ -216,13 +221,16 @@ class _SupportEntryState extends State<_SupportEntry> {
     if (_ready)
       return FastCatChat(
           client: widget.support.client,
+          showHeader: widget.showHeader,
           title: widget.title,
           locale: widget.locale,
           onOpenLink: widget.onOpenLink,
           pickAttachment: widget.pickAttachment,
           onAttachment: widget.onAttachment);
     return Scaffold(
-        appBar: AppBar(title: Text(widget.title ?? _t('在线客服', 'Support'))),
+        appBar: widget.showHeader
+            ? AppBar(title: Text(widget.title ?? _t('在线客服', 'Support')))
+            : null,
         body: Center(
             child: Padding(
                 padding: const EdgeInsets.all(24),

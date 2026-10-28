@@ -1,6 +1,6 @@
 name: fastcat_support
 description: FastCat Support Flutter chat UI and Dart visitor API client.
-version: 0.16.0
+version: 0.16.1
 publish_to: none
 environment:
   sdk: '>=3.4.0 <4.0.0'
