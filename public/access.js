@@ -94,7 +94,7 @@ export function createAccessUI({ api, E, modal, toast }) {
       const aside = target.querySelector(".platform-preview");
       aside.hidden = false;
       aside.innerHTML =
-        '<h3>实时预览</h3><p class="small">未保存的外观会实时显示；预览中的消息不会发送。</p>';
+        '<h3>实时预览</h3><p class="small">网页组件预览会实时显示未保存的外观；Flutter SDK 使用相同配置，界面以客户端实际效果为准。预览消息不会发送。</p>';
       aside.append(preview);
       const launcher = document.createElement("div");
       launcher.className = "platform-launcher-preview";

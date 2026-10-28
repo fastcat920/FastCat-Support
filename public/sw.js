@@ -1,4 +1,4 @@
-const CACHE = "fastcat-shell-v025-telegram-polling";
+const CACHE = "fastcat-shell-v025-sdk016";
 const FILES = [
   "/",
   "/widget",

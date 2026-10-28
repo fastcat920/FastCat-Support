@@ -1,6 +1,6 @@
 # FastCat Support · Flutter / Dart SDK
 
-SDK 版本 0.15.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
+SDK 版本 0.16.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
 
 ## 安装与连接
 
@@ -28,6 +28,22 @@ FastCatChat(client: support);
 ```
 
 完整启动示例见 `example/main.dart`。正式服务必须使用 HTTPS；HTTP 仅允许 localhost、127.0.0.1、::1 与 Android 模拟器宿主地址 10.0.2.2。Android 需 INTERNET 权限；开发 HTTP 需按宿主应用配置本地明文访问，iOS 本地开发按宿主 ATS 设置。Flutter Web 在后台配置完整 origin（例如 `https://app.example.com`）；SDK 不使用工作台 Cookie。
+
+## 推荐的直接打开方式（0.16）
+
+```dart
+final support = FastCatSupport(
+  baseUrl: Uri.parse('https://support.fastcat.lol'),
+  appKey: '后台 Flutter / Dart SDK 平台的接入标识',
+  user: FastCatUser(id: currentUser.id, email: currentUser.email, name: currentUser.name),
+);
+await support.open(context);
+// 不再使用时调用 support.close()；切换账号时关闭旧页面并创建新实例。
+```
+
+未传用户时使用匿名会话；没有可用邮箱时首次填写，凭据及邮箱默认通过 flutter_secure_storage 保存。用户 ID 用于本机隔离，并非服务端身份认证；不同设备无法仅凭邮箱恢复会话。`reset()` 清除当前身份的本地凭据和邮箱。旧 `FastCatClient`、`FastCatChat` 和 `FastCatLauncher` 仍可使用，旧会话不会自动迁移到新账号范围。附件选择和下载仍需宿主提供回调。Web 安全存储受浏览器和 HTTPS 环境约束；macOS 等平台需按 flutter_secure_storage 文档配置权限，真实设备需单独验收。
+
+聊天页读取后台的平台标题、Logo、主题色、语言及明暗模式；欢迎语由服务端会话消息提供。后台实时预览为网页组件，Flutter 是独立实现，布局和功能并非像素级完全一致。
 
 ## 消息与附件
 

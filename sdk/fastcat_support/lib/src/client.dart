@@ -47,10 +47,17 @@ class FastCatClient {
   final Uri baseUrl;
   final String appKey;
   final FastCatSessionStore? store;
+
+  /// Optional stable business-account scope. Use a different client per account.
+  final String? sessionScope;
   final http.Client _http;
   Map<String, dynamic>? _session;
   bool _closed = false;
-  String get _storeKey => 'fastcat:${baseUrl.origin}:$appKey';
+  String get _storeKey =>
+      'fastcat:${baseUrl.origin}:$appKey' +
+      (sessionScope == null
+          ? ''
+          : ':user:${Uri.encodeComponent(sessionScope!)}');
   String? get conversationId => _session?['id'] as String?;
   bool get hasSession => _session != null;
 
@@ -58,6 +65,7 @@ class FastCatClient {
       {required this.baseUrl,
       required this.appKey,
       this.store,
+      this.sessionScope,
       http.Client? client})
       : _http = client ?? http.Client() {
     if ((!['https'].contains(baseUrl.scheme) &&
@@ -68,7 +76,8 @@ class FastCatClient {
         baseUrl.path.isNotEmpty && baseUrl.path != '/' ||
         baseUrl.hasQuery ||
         baseUrl.hasFragment ||
-        appKey.isEmpty) {
+        appKey.isEmpty ||
+        (sessionScope != null && sessionScope!.trim().isEmpty)) {
       throw ArgumentError(
           'Use an HTTPS origin and a platform appKey (HTTP is allowed for local development).');
     }
