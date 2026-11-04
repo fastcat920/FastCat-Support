@@ -375,7 +375,7 @@ test("retired workspace rules cannot reactivate inherited platform reception", a
     assert.equal(
       x.db.prepare("SELECT assignee FROM conversations WHERE id=?").get(c.id)
         .assignee,
-      "",
+      "admin",
     );
     assert.equal(
       x.db
@@ -773,6 +773,27 @@ test("human reception assigns first visitor message, queues at capacity and fill
       .run(b.id);
     x.service.tick();
     assert.equal(row(b).assignee, "admin");
+  } finally {
+    x.service.close();
+    x.db.close();
+  }
+});
+
+test("default human reception inherit assigns and backfills exactly like off", async () => {
+  const x = setup();
+  try {
+    const ch = await x.channel("inherit");
+    x.db.exec("UPDATE users SET availability='offline',capacity=1");
+    const a = x.conversation(ch.id);
+    x.send(a, "Hi");
+    const row = () =>
+      x.db.prepare("SELECT * FROM conversations WHERE id=?").get(a.id);
+    assert.equal(row().handoff_pending, 1);
+    assert.equal(row().assignee, "");
+    x.db.exec("UPDATE users SET availability='available'");
+    x.service.tick();
+    assert.equal(row().assignee, "admin");
+    assert.equal(x.calls.length, 0);
   } finally {
     x.service.close();
     x.db.close();

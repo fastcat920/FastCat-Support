@@ -321,7 +321,7 @@ test("workspace reception endpoints are removed; working hours retain revision v
   const visitor = await start();
   await send(visitor, "退货");
   const thread = await detail(visitor);
-  assert.equal(thread.conversation.assignee, "");
+  assert.equal(thread.conversation.assignee, admin.id);
   assert.equal(thread.messages.filter((m) => m.source === "ai").length, 0);
 });
 
