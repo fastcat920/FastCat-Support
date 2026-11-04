@@ -26,7 +26,7 @@ npm run format:check
 
 ## 宝塔一键更新
 
-宝塔部署统一将代码直接放在 `/www/wwwroot/support.fastcat.lol`，不创建 `app` 子目录。完成首次部署后，在仓库目录执行 `npm run update`，自动拉取更新、按需安装依赖、调用宝塔重启并检查服务。默认项目名 `fastcat-support`，迁移服务器无需重新编写脚本。首次取得此命令及自定义配置见 [宝塔更新说明](docs/BAOTA-UPDATE.md)。
+宝塔部署统一将代码直接放在 `/www/wwwroot/support.fastcat.lol`，不创建 `app` 子目录。完成首次部署后，在仓库目录执行 `./update`（自动识别 Node/npm，无需设置 PATH），自动拉取更新、按需安装依赖、调用宝塔重启并检查服务。默认项目名 `fastcat-support`，迁移服务器无需重新编写脚本。首次取得此命令及自定义配置见 [宝塔更新说明](docs/BAOTA-UPDATE.md)。
 
 ## 后台协作与管理
 

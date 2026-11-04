@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PY=/www/server/panel/pyenv/bin/python3
+if [ ! -x "$PY" ]; then
+  echo '未找到宝塔 Python 环境，请先安装宝塔并创建 Node 项目。' >&2
+  exit 1
+fi
+exec "$PY" "$ROOT/scripts/update-bootstrap.py"

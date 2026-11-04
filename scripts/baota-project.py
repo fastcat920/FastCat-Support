@@ -38,7 +38,40 @@ config = project.get('project_config') or {}
 if isinstance(config, str):
     config = json.loads(config)
 port = config.get('port') or config.get('project_port') or project.get('port') or 18763
-if mode == 'check':
+if mode == 'runtime':
+    from pathlib import Path
+    override_file = Path(root) / '.fastcat-update.json'
+    override = json.loads(override_file.read_text()) if override_file.exists() else {}
+    node = override.get('nodePath')
+    if not node:
+        version = next((config.get(k) for k in ('nodejs_version', 'node_version', 'nodeVersion') if config.get(k)), None)
+        if version:
+            version = str(version)
+            if not version.startswith('v'):
+                version = 'v' + version
+            if not all(c in 'v0123456789.' for c in version):
+                raise SystemExit('宝塔 Node 版本格式无法识别，请在 .fastcat-update.json 设置 nodePath')
+            node = str(Path('/www/server/nodejs') / version / 'bin/node')
+        else:
+            running = set()
+            for pid in Path('/proc').glob('[0-9]*'):
+                try:
+                    if os.path.realpath(pid / 'cwd') == os.path.realpath(root):
+                        exe = os.path.realpath(pid / 'exe')
+                        if Path(exe).name == 'node' and Path(exe).is_file():
+                            running.add(exe)
+                except OSError:
+                    pass
+            if len(running) == 1:
+                node = running.pop()
+            else:
+                installed = list(Path('/www/server/nodejs').glob('v*/bin/node'))
+                if len(installed) == 1:
+                    node = str(installed[0])
+    if not node or not Path(node).is_file():
+        raise SystemExit('无法唯一确定项目 Node 版本，请在宝塔选择版本，或在 .fastcat-update.json 设置 nodePath')
+    print(json.dumps({'node': node}))
+elif mode == 'check':
     print(json.dumps({'port': int(port)}))
 elif mode == 'restart':
     args = public.dict_obj()

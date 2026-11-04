@@ -29,3 +29,7 @@ secrets/
 /.well-known/
 /index.html
 /404.html
+
+# Python tooling caches
+__pycache__/
+*.pyc
