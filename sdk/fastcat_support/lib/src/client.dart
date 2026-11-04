@@ -215,7 +215,7 @@ class FastCatClient {
 
   Uri _uri(String path, [Map<String, String> query = const {}]) => baseUrl
       .resolve('/api/widget$path')
-      .replace(queryParameters: {'appKey': appKey, ...query});
+      .replace(queryParameters: {'appKey': appKey, 'client': 'sdk', ...query});
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         if (_session != null) 'Authorization': 'Bearer ${_session!['token']}'

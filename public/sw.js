@@ -1,4 +1,4 @@
-const CACHE = "fastcat-shell-v030-human-auto-assignment-1";
+const CACHE = "fastcat-shell-v031-shared-app-key-1";
 const FILES = [
   "/assistance.js",
   "/configuration-cache.js",

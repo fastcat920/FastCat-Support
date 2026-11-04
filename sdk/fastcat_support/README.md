@@ -1,6 +1,6 @@
 # FastCat Support · Flutter / Dart SDK
 
-SDK 版本 0.28.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
+SDK 版本 0.28.1，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
 
 ## 安装与连接
 
@@ -193,10 +193,10 @@ final monitor = client.watch().listen((page) {});
 
 查看历史时不再因轮询、思考内容更新或协助状态更新自动滚到底部；打开会话和发送消息时定位最新消息，用户手动滚动后停止图片布局跟随。思考气泡读取当前平台AI客服头像。选择表情在选区插入并恢复光标/焦点，键盘正常弹出。服务端AI上下文补充当前会话上报的身份及业务字段，敏感凭据和订阅链接除外。
 
-## 会话跟随与提示（0.28.0）
+## 会话跟随与提示（0.28.1）
 
 收到客服新消息时显示最新消息；手动滚动记录后暂停跟随，重新打开或发送消息后恢复。未授权且无待确认请求时隐藏授权管理。错误提示随窗口中英文语言显示。
 
-## 用户端系统推送（0.28.0）
+## 用户端系统推送（0.28.1）
 
 新增 registerPushDevice、unregisterPushDevice、pushStatus、setPushChatVisible。宿主提供 APNs/FCM token，FastCatChat 自动上报前后台。详见项目 docs/USER-PUSH.md；系统权限、接收通知和点击跳转由宿主处理。

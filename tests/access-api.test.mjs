@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -51,7 +52,7 @@ after(async () => {
   await once(child, "exit");
   rmSync(dir, { recursive: true, force: true });
 });
-test("visitor API supports SDK origin CORS while staff APIs remain same-origin; sessions cannot cross platform keys", async () => {
+test("visitor API supports shared web/SDK keys and SDK origin CORS while staff APIs remain same-origin", async () => {
   const channels = (await call("/api/access/channels")).data;
   assert.equal(channels.length, 2);
   const sdk = channels.find((c) => c.type === "sdk"),
@@ -69,7 +70,7 @@ test("visitor API supports SDK origin CORS while staff APIs remain same-origin; 
   );
   const headers = { Origin: "https://app.example.com" };
   const preflight = await call(
-    "/api/widget/start?appKey=" + sdk.public_key,
+    "/api/widget/start?client=sdk&appKey=" + sdk.public_key,
     "OPTIONS",
     undefined,
     headers,
@@ -92,7 +93,7 @@ test("visitor API supports SDK origin CORS while staff APIs remain same-origin; 
     403,
   );
   const visitor = await call(
-    "/api/widget/start?appKey=" + sdk.public_key,
+    "/api/widget/start?client=sdk&appKey=" + sdk.public_key,
     "POST",
     { email: "flutter@example.test" },
     headers,
@@ -130,7 +131,7 @@ test("visitor API supports SDK origin CORS while staff APIs remain same-origin; 
         { Authorization: auth.Authorization },
       )
     ).status,
-    403,
+    200,
   );
   assert.equal(
     (
@@ -502,5 +503,51 @@ test("visitor email is required and supplied profile stays isolated by visitor t
       )
     ).status,
     400,
+  );
+});
+
+test("default web and SDK share an editable Key with revision checks and old key invalidation", async () => {
+  let channels = (await call("/api/access/channels")).data;
+  let web = channels.find((c) => c.type === "web" && c.is_default),
+    sdk = channels.find((c) => c.type === "sdk");
+  assert.equal(web.public_key, sdk.public_key);
+  const db = new DatabaseSync(join(dir, "test.db"));
+  const legacy = db
+    .prepare("SELECT public_key FROM access_channels WHERE id=?")
+    .get(sdk.id).public_key;
+  db.close();
+  assert.equal((await call("/api/widget/config?appKey=" + legacy)).status, 200);
+  const endpoint = "/api/access/channels/" + web.id + "/key",
+    old = web.public_key,
+    key = "restored_key_for_both_clients_2026";
+  assert.equal(
+    (
+      await call(endpoint, "POST", {
+        key: "short",
+        expectedRevision: web.revision,
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await call(endpoint, "POST", { key, expectedRevision: -1 })).status,
+    409,
+  );
+  assert.equal(
+    (await call(endpoint, "POST", { key, expectedRevision: web.revision }))
+      .status,
+    200,
+  );
+  channels = (await call("/api/access/channels")).data;
+  web = channels.find((c) => c.id === web.id);
+  sdk = channels.find((c) => c.type === "sdk");
+  assert.equal(web.public_key, key);
+  assert.equal(sdk.public_key, key);
+  assert.equal((await call("/api/widget/config?appKey=" + legacy)).status, 403);
+  assert.equal((await call("/api/widget/config?appKey=" + old)).status, 403);
+  assert.equal((await call("/api/widget/config?appKey=" + key)).status, 200);
+  assert.equal(
+    (await call("/api/widget/config?client=sdk&appKey=" + key)).status,
+    200,
   );
 });
