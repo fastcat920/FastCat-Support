@@ -7,6 +7,12 @@ export function shouldSendMessage(event) {
     !event.repeat
   );
 }
+export function insertComposerEmoji(input, emoji) {
+  if (input.disabled) return;
+  input.setRangeText(emoji, input.selectionStart, input.selectionEnd, "end");
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.focus({ preventScroll: true });
+}
 // Shared native composer controls for the website and staff workspace.
 export function bindComposer(form) {
   const input = form.querySelector("textarea");
@@ -26,7 +32,10 @@ export function bindComposer(form) {
   const trigger = document.createElement("button");
   trigger.type = "button";
   trigger.className = "quiet emoji-trigger";
-  trigger.textContent = "☺";
+  if (form.classList.contains("visitor-composer")) {
+    trigger.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 14s1 3 4 3 4-3 4-3"/><path d="M8.5 8.5h.01m7 0h.01"/></svg>';
+  } else trigger.textContent = "☺";
   trigger.setAttribute("aria-label", "选择表情");
   trigger.title = "选择表情";
   trigger.setAttribute("aria-expanded", "false");
@@ -71,15 +80,8 @@ export function bindComposer(form) {
     button.setAttribute("aria-label", emoji);
     button.onclick = () => {
       if (input.disabled) return;
-      input.setRangeText(
-        emoji,
-        input.selectionStart,
-        input.selectionEnd,
-        "end",
-      );
-      input.dispatchEvent(new Event("input", { bubbles: true }));
       close();
-      input.focus();
+      insertComposerEmoji(input, emoji);
     };
     panel.append(button);
   }
@@ -97,7 +99,9 @@ export function bindComposer(form) {
   form.addEventListener("focusout", (e) => {
     if (!form.contains(e.relatedTarget)) close();
   });
-  form.querySelector(".composer-footer div.row").prepend(trigger);
+  const actions = form.querySelector(".composer-footer div.row");
+  if (form.classList.contains("visitor-composer")) actions.append(trigger);
+  else actions.prepend(trigger);
   form.append(panel);
 }
 export function createMessageSound() {

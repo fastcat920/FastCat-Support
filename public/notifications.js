@@ -20,6 +20,7 @@ export function createNotifications({
   getActive,
   openConversation,
   toast,
+  onUnread = () => {},
 }) {
   observeLanguage();
   let prefs = {},
@@ -28,7 +29,14 @@ export function createNotifications({
     again = false,
     owner = null,
     context,
-    lastSound = 0;
+    lastSound = 0,
+    pollTimer;
+  window.addEventListener("focus", () => {
+    if (owner) controller.poll();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && owner) controller.poll();
+  });
   const supported = () => typeof Notification !== "undefined";
   const permission = () =>
     supported() ? Notification.permission : "unsupported";
@@ -129,13 +137,14 @@ export function createNotifications({
       return false;
     }
   };
-  return {
+  const controller = {
     get preferences() {
       return prefs;
     },
     permission,
     applyTheme,
     async init() {
+      clearInterval(pollTimer);
       owner = getMe()?.id;
       if (!owner) return;
       const current = owner;
@@ -143,9 +152,13 @@ export function createNotifications({
         api("/preferences"),
         api("/notifications"),
       ]);
-      if (getMe()?.id !== current) return;
+      if (owner !== current || getMe()?.id !== current) return;
       prefs = p;
       cursor = baseline.cursor;
+      onUnread(baseline.unreadCount || 0);
+      pollTimer = setInterval(() => {
+        if (!document.hidden) controller.poll();
+      }, 10000);
       applyTheme(p.theme);
     },
     async save(changes, { expectedRevision } = {}) {
@@ -192,7 +205,8 @@ export function createNotifications({
         do {
           again = false;
           const result = await api("/notifications?after=" + cursor);
-          if (getMe()?.id !== current) return;
+          if (owner !== current || getMe()?.id !== current) return;
+          onUnread(result.unreadCount || 0);
           for (const item of result.items) {
             if (
               !notificationDecision(item, prefs, {
@@ -225,9 +239,12 @@ export function createNotifications({
       }
     },
     close() {
+      clearInterval(pollTimer);
+      onUnread(0);
       owner = null;
       cursor = 0;
       prefs = {};
     },
   };
+  return controller;
 }

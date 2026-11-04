@@ -17,6 +17,7 @@ export function createAgentEditor({ api, E, modal, toast, onSaved }) {
         api("/ai/defaults"),
         api("/devices"),
       ]);
+    let avatar = existing?.config?.avatar || "";
     const c = existing?.config || {},
       selectedCollections = new Set(
         c.collectionIds || (c.collectionId ? [c.collectionId] : []),
@@ -38,10 +39,10 @@ export function createAgentEditor({ api, E, modal, toast, onSaved }) {
     const o = modal(
       duplicate ? "复制智能体" : existing ? "编辑智能体" : "创建智能体",
       `
-   <section class="agent-editor-section"><h3>基本信息</h3><div class="service-form-grid">${field("name", "名称", duplicate ? `${existing.name} 副本` : existing?.name || "")}${field("profession", "职业/角色", c.profession || "")}</div></section>
-   <section class="agent-editor-section"><h3>模型配置</h3><div class="field"><label>对话模型<select name="modelId" required><option value="">${available.length ? "请选择模型" : "暂无可用模型，请先到模型管理添加"}</option>${available.map((m) => `<option value="${m.id}" ${m.id === initial ? "selected" : ""}>${E(m.name)} · ${E(m.provider_name)}</option>`).join("")}</select></label></div><p class="small">新建时预选工作空间默认模型。保存后绑定具体模型，后续默认设置变化不会自动替换。</p></section>
+   <section class="agent-editor-section"><h3>基本信息</h3><div class="profile-avatar"><div class="avatar" id="agent-avatar-preview"></div><label>上传头像<input id="agent-avatar-file" type="file" accept="image/png,image/jpeg,image/webp"></label><button type="button" id="agent-avatar-remove">移除头像</button></div><p class="small">自动裁切为 100×100 像素，最大 5 MB。</p><div class="service-form-grid">${field("name", "名称", duplicate ? `${existing.name} 副本` : existing?.name || "")}${field("profession", "职业/角色", c.profession || "")}</div></section>
+   <section class="agent-editor-section"><h3>模型配置</h3><div class="field"><label>对话模型<select name="modelId" required><option value="">${available.length ? "请选择模型" : "暂无可用模型，请先到模型管理添加"}</option>${available.map((m) => `<option value="${m.id}" ${m.id === initial ? "selected" : ""}>${E(m.name)} · ${E(m.provider_name)}</option>`).join("")}</select></label></div><div class="field"><label>备用对话模型<select name="fallbackModelId"><option value="">不启用备用模型</option>${available.map((m) => `<option value="${m.id}" ${m.provider_id === c.fallbackProviderId && m.model === c.fallbackModel ? "selected" : ""}>${E(m.name)} · ${E(m.provider_name)}</option>`).join("")}</select></label></div><p class="small">主模型请求失败、超时或回复中断时自动切换；备用模型需支持相同能力。</p><p class="small">新建时预选工作空间默认模型。保存后绑定具体模型，后续默认设置变化不会自动替换。</p></section>
    <section class="agent-editor-section"><h3>能力描述</h3><div class="field"><label>详细提示词/服务指令<textarea name="description" rows="5" required>${E(existing?.description || "")}</textarea></label></div></section>
-   <details class="agent-editor-section"><summary>高级配置</summary>${check("markdown", "使用 Markdown 格式回答", c.markdown ?? false)}${check("skillsEnabled", "启用 Skills 自动发现与读取", c.skillsEnabled ?? false)}${check("addDatetime", "在上下文中添加当前日期时间", c.addDatetime ?? false)}<div class="service-form-grid">${field("historyRuns", "历史会话轮数（0–20）", c.historyRuns ?? 15, "number")}${field("toolCallLimit", "工具调用总次数（1–50）", c.toolCallLimit ?? 16, "number")}${field("maxToolRounds", "模型调用轮数（含最终回答，1–5）", c.maxToolRounds ?? 3, "number")}</div><details><summary>多智能体协作（可选扩展）</summary>${check("collaborationEnabled", "启用协作", c.collaboration?.enabled)}<div class="field"><label>协作成员（2–4 位）<select name="members" multiple size="4">${agents
+   <details class="agent-editor-section"><summary>高级配置</summary>${check("imageRecognition", "启用图片识别（需模型支持视觉输入）", c.imageRecognition ?? false)}${check("markdown", "使用 Markdown 格式回答", c.markdown ?? false)}${check("skillsEnabled", "启用 Skills 自动发现与读取", c.skillsEnabled ?? false)}${check("addDatetime", "在上下文中添加当前日期时间", c.addDatetime ?? false)}<div class="service-form-grid">${field("historyRuns", "历史会话轮数（0–20）", c.historyRuns ?? 15, "number")}${field("toolCallLimit", "工具调用总次数（1–50）", c.toolCallLimit ?? 16, "number")}${field("maxToolRounds", "模型调用轮数（含最终回答，1–5）", c.maxToolRounds ?? 3, "number")}</div><details><summary>多智能体协作（可选扩展）</summary>${check("collaborationEnabled", "启用协作", c.collaboration?.enabled)}<div class="field"><label>协作成员（2–4 位）<select name="members" multiple size="4">${agents
      .filter((a) => a.id !== existing?.id && !a.config.collaboration?.enabled)
      .map(
        (a) =>
@@ -54,14 +55,21 @@ export function createAgentEditor({ api, E, modal, toast, onSaved }) {
       existing && !duplicate ? "保存" : "创建智能体",
       async (b) => {
         const chosen = available.find((m) => m.id === b.modelId);
+        const fallback = available.find((m) => m.id === b.fallbackModelId);
+        if (fallback?.id === chosen?.id)
+          throw Error("备用模型不能与主模型相同");
         if (!chosen) throw Error("请选择可用的对话模型");
         if (b.knowledgeScope === "selected" && !selectedCollections.size)
           throw Error("请至少选择一个知识库");
         const config = {
           ...c,
+          avatar,
           profession: b.profession.trim(),
           providerId: chosen.provider_id,
           model: chosen.model,
+          fallbackProviderId: fallback?.provider_id || null,
+          fallbackModel: fallback?.model || null,
+          imageRecognition: !!b.imageRecognition,
           knowledgeScope: b.knowledgeScope,
           collectionIds:
             b.knowledgeScope === "selected" ? [...selectedCollections] : [],
@@ -105,6 +113,85 @@ export function createAgentEditor({ api, E, modal, toast, onSaved }) {
       },
     );
     o.classList.add("agent-editor");
+    const editorForm = o.querySelector("form");
+    editorForm.id =
+      o.querySelector(".modal").getAttribute("aria-labelledby") + "-form";
+    const header = o.querySelector(".modal > header");
+    const actions = document.createElement("div");
+    actions.className = "agent-editor-actions";
+    const footer = editorForm.querySelector(":scope > footer");
+    for (const button of [
+      o.querySelector("#reset-agent-form"),
+      ...footer.children,
+    ]) {
+      button.setAttribute("form", editorForm.id);
+      actions.append(button);
+    }
+    footer.remove();
+    header.querySelector("[data-close]").remove();
+    header.append(actions);
+    editorForm
+      .querySelector(".service-form-grid")
+      .classList.add("agent-editor-pair");
+    const modelSection = editorForm.elements.modelId.closest("section");
+    const modelPair = document.createElement("div");
+    modelPair.className = "service-form-grid agent-editor-pair";
+    modelSection.insertBefore(
+      modelPair,
+      editorForm.elements.modelId.closest(".field"),
+    );
+    modelPair.append(
+      editorForm.elements.modelId.closest(".field"),
+      editorForm.elements.fallbackModelId.closest(".field"),
+    );
+    const avatarPreview = o.querySelector("#agent-avatar-preview");
+    const drawAvatar = () => {
+      avatarPreview.innerHTML = avatar
+        ? `<img src="${E(avatar)}" alt="智能体头像">`
+        : "◉";
+    };
+    drawAvatar();
+    o.querySelector("#agent-avatar-remove").onclick = () => {
+      avatar = "";
+      drawAvatar();
+    };
+    o.querySelector("#agent-avatar-file").onchange = async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const save = o.querySelector('button[type="submit"]');
+      try {
+        if (
+          file.size > 5 * 1024 * 1024 ||
+          !["image/png", "image/jpeg", "image/webp"].includes(file.type)
+        )
+          throw Error("请选择 5 MB 以内的 PNG、JPEG 或 WebP 图片");
+        if (save) save.disabled = true;
+        const image = await createImageBitmap(file);
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 100;
+        const side = Math.min(image.width, image.height);
+        canvas
+          .getContext("2d")
+          .drawImage(
+            image,
+            (image.width - side) / 2,
+            (image.height - side) / 2,
+            side,
+            side,
+            0,
+            0,
+            100,
+            100,
+          );
+        image.close();
+        avatar = canvas.toDataURL("image/webp", 0.85);
+        drawAvatar();
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        if (save) save.disabled = false;
+      }
+    };
     const form = o.querySelector("form");
     form.elements.name.maxLength = 200;
     form.elements.profession.maxLength = 100;

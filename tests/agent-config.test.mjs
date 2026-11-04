@@ -186,3 +186,314 @@ test("workflow calls reject unpublished versions and cancellation before any sid
     db.close();
   }
 });
+
+test("fallback discards a broken partial response, preserves tool calls, and never retries cancellation", async () => {
+  const { completeWithFallback } = await import("../lib/agent-config.mjs");
+  let attempts = [],
+    calls;
+  const providers = {
+    async *complete(o) {
+      attempts.push(o.model);
+      if (o.model === "primary") {
+        yield "broken";
+        throw Error("network");
+      }
+      o.onToolCalls([{ id: "ok" }]);
+      yield "backup";
+    },
+  };
+  const config = { fallbackProviderId: "b", fallbackModel: "backup" };
+  let result = "";
+  for await (const token of completeWithFallback(
+    providers,
+    { model: "primary", onToolCalls: (v) => (calls = v) },
+    config,
+  ))
+    result += token;
+  assert.equal(result, "backup");
+  assert.deepEqual(attempts, ["primary", "backup"]);
+  assert.equal(calls[0].id, "ok");
+  attempts = [];
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(async () => {
+    for await (const token of completeWithFallback(
+      providers,
+      { model: "primary", signal: controller.signal },
+      config,
+    )) {
+    }
+  });
+  assert.deepEqual(attempts, ["primary"]);
+});
+
+test("image recognition only forwards stored images in the authorized conversation when enabled", async () => {
+  const { agentImageMessages } = await import("../lib/agent-config.mjs");
+  const db = new DatabaseSync(":memory:");
+  db.exec(
+    "CREATE TABLE attachments(id TEXT,conversation_id TEXT,mime TEXT,data BLOB)",
+  );
+  db.prepare("INSERT INTO attachments VALUES(?,?,?,?)").run(
+    "image",
+    "c",
+    "image/png",
+    Buffer.from("image"),
+  );
+  const messages = [{ role: "user", content: "photo", attachment_id: "image" }];
+  assert.equal(
+    agentImageMessages(db, messages, {}, "conversation:c")[0].content,
+    "photo",
+  );
+  assert.equal(
+    agentImageMessages(
+      db,
+      messages,
+      { imageRecognition: true },
+      "conversation:other",
+    )[0].content,
+    "photo",
+  );
+  const content = agentImageMessages(
+    db,
+    messages,
+    { imageRecognition: true },
+    "automatic:c",
+  )[0].content;
+  assert.match(content[1].image_url.url, /^data:image\/png;base64,/);
+  assert.equal(messages[0].attachment_id, "image");
+  db.close();
+});
+
+test("conversation AI can request consent-based diagnostics and reads existing reports as data", async () => {
+  const db = setup();
+  let requested = 0,
+    rounds = 0;
+  try {
+    const runner = createAgentRunner({
+      db,
+      knowledge: () => [],
+      assistance: {
+        state: () => ({
+          device: { online: true, capabilities: ["basic"] },
+          requests: [
+            {
+              status: "succeeded",
+              capability: "basic",
+              finished: 1000,
+              report: { summary: "known diagnostic" },
+            },
+          ],
+        }),
+        request: (id, capability) => {
+          assert.equal(id, "c");
+          assert.equal(capability, "basic");
+          requested++;
+          return { id: "r", status: "pending" };
+        },
+      },
+      providers: {
+        async *complete(o) {
+          assert.ok(
+            o.messages.some(
+              (m) =>
+                typeof m.content === "string" &&
+                m.content.includes("known diagnostic"),
+            ),
+          );
+          if (rounds++ === 0) {
+            assert.ok(o.tools.some((t) => t.name === "request_diagnostics"));
+            o.onToolCalls([
+              {
+                id: "diagnostic-call",
+                name: "request_diagnostics",
+                arguments: { capability: "basic", reason: "need version" },
+              },
+            ]);
+          } else {
+            assert.equal(
+              JSON.parse(o.messages.at(-1).content).authorization,
+              "per_request",
+            );
+            yield "请确认诊断卡片";
+          }
+        },
+      },
+    });
+    let text = "";
+    for await (const part of runner.stream({
+      context: "conversation:c",
+      messages: [{ role: "user", content: "help" }],
+    }))
+      text += part;
+    assert.equal(requested, 1);
+    assert.equal(text, "请确认诊断卡片");
+  } finally {
+    db.close();
+  }
+});
+
+test("automatic and staff conversation replies use fresh profile context while standalone debug stays isolated", async () => {
+  const db = setup();
+  const seen = [];
+  try {
+    const runner = createAgentRunner({
+      db,
+      knowledge: () => [],
+      visitorContext: (context) =>
+        context === "debug" ? null : "PROFILE:macos:3.6.2",
+      providers: {
+        async *complete(o) {
+          seen.push(o.messages);
+          yield "answer";
+        },
+      },
+    });
+    for (const context of ["automatic:c", "conversation:c", "debug"])
+      for await (const token of runner.stream({
+        context,
+        messages: [{ role: "user", content: "help" }],
+      })) {
+      }
+    assert.equal(seen.length, 3);
+    for (const messages of seen.slice(0, 2))
+      assert.ok(
+        messages.some(
+          (m) =>
+            m.role === "system" && m.content.includes("PROFILE:macos:3.6.2"),
+        ),
+      );
+    assert.ok(seen[2].every((m) => !String(m.content).includes("PROFILE:")));
+  } finally {
+    db.close();
+  }
+});
+
+test("AI repair tools only create a user-confirmation request and are absent for legacy clients", async () => {
+  const db = setup();
+  let requested = 0,
+    round = 0;
+  let enabled = true;
+  try {
+    const runner = createAgentRunner({
+      db,
+      knowledge: () => [],
+      assistance: {
+        state: () => ({
+          device: {
+            online: true,
+            capabilities: [],
+            repairCapabilities: enabled ? ["reconnect"] : [],
+          },
+          requests: [],
+          repairs: [],
+        }),
+        requestRepair: (conversation, operation) => {
+          assert.equal(conversation, "c");
+          assert.equal(operation, "reconnect");
+          requested++;
+          return { id: "repair", status: "pending" };
+        },
+      },
+      providers: {
+        async *complete(o) {
+          if (!enabled) {
+            assert.ok(!o.tools.some((t) => t.name === "request_repair"));
+            yield "manual advice";
+            return;
+          }
+          if (round++ === 0) {
+            assert.ok(o.tools.some((t) => t.name === "request_repair"));
+            o.onToolCalls([
+              {
+                id: "repair-call",
+                name: "request_repair",
+                arguments: {
+                  operation: "reconnect",
+                  reason: "connection check",
+                },
+              },
+            ]);
+          } else {
+            assert.equal(
+              JSON.parse(o.messages.at(-1).content).authorization,
+              "per_request",
+            );
+            yield "请确认修复请求";
+          }
+        },
+      },
+    });
+    for await (const token of runner.stream({
+      context: "automatic:c",
+      messages: [{ role: "user", content: "help" }],
+    })) {
+    }
+    assert.equal(requested, 1);
+    enabled = false;
+    for await (const token of runner.stream({
+      context: "automatic:c",
+      messages: [{ role: "user", content: "help" }],
+    })) {
+    }
+    assert.equal(requested, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test("AI sees active authorization explicitly and is told not to ask for consent again", async () => {
+  const db = setup();
+  let round = 0;
+  try {
+    const runner = createAgentRunner({
+      db,
+      knowledge: () => [],
+      assistance: {
+        state: () => ({
+          device: {
+            online: true,
+            consentRequired: true,
+            capabilities: [],
+            repairCapabilities: ["reconnect"],
+          },
+          consents: {
+            query: null,
+            operation: {
+              capabilities: ["reconnect"],
+              routes: [],
+              expires: Date.now() + 1800000,
+            },
+          },
+          requests: [],
+          repairs: [],
+        }),
+        requestRepair: () => ({ id: "r", status: "pending" }),
+      },
+      providers: {
+        async *complete(o) {
+          if (round++ === 0)
+            o.onToolCalls([
+              {
+                id: "call",
+                name: "request_repair",
+                arguments: { operation: "reconnect", reason: "check" },
+              },
+            ]);
+          else {
+            const result = JSON.parse(o.messages.at(-1).content);
+            assert.equal(result.authorization, "active");
+            assert.match(result.message, /无需再次点击同意/);
+            yield "正在重新连接，请稍候。";
+          }
+        },
+      },
+    });
+    for await (const token of runner.stream({
+      context: "automatic:c",
+      messages: [{ role: "user", content: "help" }],
+    })) {
+    }
+  } finally {
+    db.close();
+  }
+});

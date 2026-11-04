@@ -1,3 +1,11 @@
+import { localizedError } from "./error-message.js";
+import {
+  configurationKey,
+  readConfiguration,
+  saveConfiguration,
+  validConfiguration,
+} from "./configuration-cache.js";
+import { randomId } from "./ids.js";
 import { widgetChatMarkup } from "./widget-chat-markup.js";
 import { withMessageDays } from "./message-days.js";
 import { receiptMarkup } from "./message-status.js";
@@ -27,6 +35,23 @@ function widgetURL(path) {
   if (appKey) u.searchParams.set("appKey", appKey);
   return u.href;
 }
+let followLatest = true,
+  hostOpened = false;
+function scrollLatest() {
+  requestAnimationFrame(() => {
+    const messages = document.querySelector("#messages");
+    if (messages) messages.scrollTop = messages.scrollHeight;
+  });
+}
+for (const type of ["wheel", "touchmove", "pointerdown"]) {
+  document.addEventListener(
+    type,
+    (event) => {
+      if (event.target.closest?.("#messages")) followLatest = false;
+    },
+    { passive: true },
+  );
+}
 let appearanceConfig = {},
   hostAppearance = {},
   hostVisitor = {},
@@ -39,6 +64,21 @@ function updateAppearance() {
   });
   setLanguage(appearance.language);
   applyAppearance(appearance);
+  const notice = root.querySelector(".error");
+  if (notice?.textContent && notice.dataset.error) error(notice.dataset.error);
+  for (const node of document.querySelectorAll("[data-welcome]")) {
+    node.textContent =
+      (appearance.language === "en"
+        ? appearanceConfig.welcomeMessageEn
+        : appearanceConfig.welcomeMessageZh) || node.textContent;
+  }
+  const title =
+    appearance.language === "en"
+      ? appearanceConfig.titleEn
+      : appearanceConfig.titleZh;
+  if (title || appearanceConfig.fallbackTitle)
+    document.querySelector(".widget-shell header h2").textContent =
+      title || appearanceConfig.fallbackTitle;
 }
 observeLanguage();
 updateAppearance();
@@ -58,6 +98,13 @@ window.addEventListener("message", (event) => {
   )
     return;
   const value = event.data;
+  if (value.opened === true && !hostOpened) {
+    followLatest = true;
+    scrollLatest();
+    refreshConfiguration();
+    if (session) refresh();
+  }
+  if (typeof value.opened === "boolean") hostOpened = value.opened;
   if (
     value.visitor &&
     typeof value.visitor === "object" &&
@@ -86,39 +133,131 @@ window.addEventListener("message", (event) => {
 });
 if (parent !== window && parentOrigin && parentOrigin !== "null")
   parent.postMessage({ type: "fastcat:ready" }, parentOrigin);
-fetch(widgetURL("/config"))
-  .then((r) => r.json())
-  .then((c) => {
-    if (c.title)
-      document.querySelector(".widget-shell header h2").textContent = c.title;
-    const w = c.widget || {};
-    appearanceConfig = w;
-    if (
-      parent !== window &&
-      (!parentOrigin || parentOrigin === "null") &&
-      w.allowLocalFilePreview
+const appearanceStorageKey = configurationKey(location.origin, appKey);
+function applyConfiguration(c) {
+  if (c.title)
+    document.querySelector(".widget-shell header h2").textContent = c.title;
+  const w = c.widget || {};
+  appearanceConfig = { ...w, fallbackTitle: c.title };
+  document.querySelector("#widget-handoff").hidden =
+    w.showHandoffButton === false;
+  if (
+    parent !== window &&
+    (!parentOrigin || parentOrigin === "null") &&
+    w.allowLocalFilePreview
+  )
+    parent.postMessage({ type: "fastcat:ready" }, "*");
+  updateAppearance();
+  document.body.classList.remove("widget-loading");
+  document.querySelector("#widget-loading-status")?.remove();
+}
+let cachedConfiguration = window.__fastcatCachedConfiguration;
+try {
+  cachedConfiguration ||= readConfiguration(appearanceStorageKey);
+} catch {}
+if (cachedConfiguration) applyConfiguration(cachedConfiguration);
+let configurationRequest;
+function refreshConfiguration() {
+  if (configurationRequest) return configurationRequest;
+  const prefetched = window.__fastcatConfigurationRequest;
+  delete window.__fastcatConfigurationRequest;
+  configurationRequest = (
+    prefetched ||
+    fetch(widgetURL("/config"), { signal: AbortSignal.timeout(15000) }).then(
+      (response) => {
+        if (!response.ok) throw Error("Configuration unavailable");
+        return response.json();
+      },
     )
-      parent.postMessage({ type: "fastcat:ready" }, "*");
-    updateAppearance();
-    if (w.logoUrl) {
-      const image = document.createElement("img");
-      image.src = w.logoUrl;
-      image.alt = "";
-      image.width = 36;
-      image.height = 36;
-      image.referrerPolicy = "no-referrer";
-      image.className = "widget-logo";
-      image.onerror = () => image.remove();
-      document.querySelector(".widget-shell header").prepend(image);
-    }
-  })
-  .catch(() => {});
+  )
+    .then((c) => {
+      if (!validConfiguration(c)) throw Error("Invalid configuration");
+      saveConfiguration(appearanceStorageKey, c);
+      applyConfiguration(c);
+    })
+    .catch(() => {
+      const status = document.querySelector("#widget-loading-status");
+      if (status)
+        status.textContent =
+          "加载失败，请刷新重试 / Unable to load. Please refresh.";
+    })
+    .finally(() => {
+      configurationRequest = null;
+    });
+  return configurationRequest;
+}
+refreshConfiguration();
 const messageSound = createMessageSound();
 let knownMessages = null;
 let session;
 try {
   session = JSON.parse(sessionStorage.getItem(storageKey));
 } catch {}
+const directMessages = new Map();
+function drawDirectMessages() {
+  const box = document.querySelector("#messages");
+  if (!box) return;
+  box
+    .querySelectorAll("[data-direct-message]")
+    .forEach((node) => node.remove());
+  for (const record of directMessages.values()) {
+    if (record.session.id !== session?.id) continue;
+    const node = document.createElement("div");
+    node.className = "message agent";
+    node.dataset.directMessage = record.id;
+    node.innerHTML = `<div class="message-line"><div class="bubble"><div class="bubble-content">${record.file ? (record.file.type.startsWith("image/") ? `<img src="${E(record.preview)}" style="max-width:200px;max-height:280px" alt="${E(record.file.name)}">` : E(record.file.name)) : E(record.body)}</div><button type="button" class="direct-send-status ${record.state}" aria-label="${record.state === "failed" ? "发送失败，点击重试" : record.state === "sent" ? "已发送" : "发送中"}" title="${E(record.error ? localizedError(record.error, document.documentElement.lang) : "")}" ${record.state !== "failed" ? "disabled" : ""}>${record.state === "failed" ? "!" : record.state === "sent" ? "✓" : '<span class="send-spinner"></span>'}</button></div></div>`;
+    node.querySelector("button").onclick = () => sendDirect(record);
+    const preview = node.querySelector("img");
+    if (preview) {
+      preview.style.cursor = "zoom-in";
+      preview.onclick = () => {
+        const overlay = document.createElement("div");
+        overlay.className = "image-lightbox";
+        overlay.innerHTML = `<button type="button" aria-label="关闭图片预览">×</button><img src="${E(record.preview)}" alt="图片预览">`;
+        overlay.onclick = () => overlay.remove();
+        document.body.append(overlay);
+      };
+    }
+    box.append(node);
+  }
+}
+async function sendDirect(record) {
+  if (record.active || record.session.id !== session?.id) return;
+  record.active = true;
+  record.state = "sending";
+  drawDirectMessages();
+  try {
+    if (record.file) {
+      const response = await fetch(
+        widgetURL("/attachments?id=" + record.session.id),
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + record.session.token,
+            "X-Filename": encodeURIComponent(record.file.name),
+            "X-Client-Id": record.id,
+          },
+          body: record.file,
+        },
+      );
+      if (!response.ok)
+        throw Error((await response.json()).error || "发送失败");
+    } else
+      await api("/messages", "POST", {
+        id: record.session.id,
+        body: record.body,
+        clientId: record.id,
+      });
+    record.state = "sent";
+    await refresh();
+  } catch (error) {
+    record.state = "failed";
+    record.error = error.message;
+  } finally {
+    record.active = false;
+    drawDirectMessages();
+  }
+}
 const media = createMediaUI({ E, getSession: () => session }),
   requestIds = new Map();
 let timer,
@@ -156,11 +295,11 @@ async function api(path, method = "GET", data) {
 }
 function error(message) {
   const el = root.querySelector(".error");
-  if (el)
-    el.textContent = /Failed to fetch|Load failed|NetworkError/.test(message)
-      ? "网络暂不可用，待发消息已保留。"
-      : message;
+  if (!el) return;
+  el.dataset.error = message;
+  el.textContent = localizedError(message, document.documentElement.lang);
 }
+
 function start() {
   clearInterval(timer);
   streamController?.abort();
@@ -169,7 +308,7 @@ function start() {
   media.clear();
   requestIds.clear();
   document.querySelector("#widget-handoff").hidden = true;
-  document.querySelector("#widget-service-status").textContent = "在线客服";
+  document.querySelector("#widget-service-status").textContent = "";
   root.innerHTML =
     '<form class="start"><h2>开始一段对话</h2><p class="muted">留下邮箱，我们会尽快回复你。</p><div class="field"><label for="email">邮箱</label><input id="email" name="email" type="email" required maxlength="254" autocomplete="email" placeholder="请输入邮箱"></div><p class="error" role="alert"></p><button class="primary">开始咨询 →</button></form>';
   if (typeof hostVisitor.email === "string")
@@ -193,56 +332,19 @@ function start() {
   };
 }
 function chat() {
+  followLatest = true;
   const currentSession = session;
   knownMessages = null;
   receiptCursor = 0;
   readCursor = 0;
   outbox?.close();
   root.innerHTML = widgetChatMarkup;
-  outbox = createOutbox({
-    owner: "visitor:" + currentSession.id,
-    canSend: () => session?.id === currentSession.id,
-    send: async (r) => {
-      if (r.file) {
-        const response = await fetch(
-          widgetURL("/attachments?id=" + currentSession.id),
-          {
-            method: "POST",
-            headers: {
-              Authorization: "Bearer " + currentSession.token,
-              "X-Filename": encodeURIComponent(r.filename),
-              "X-Client-Id": r.id,
-            },
-            body: r.file,
-          },
-        );
-        if (!response.ok) {
-          const d = await response.json();
-          throw Object.assign(Error(d.error), { status: response.status });
-        }
-      } else
-        await api("/messages", "POST", {
-          id: currentSession.id,
-          body: r.body,
-          clientId: r.id,
-        });
-      refresh();
-    },
-    onChange: (rows) => {
-      if (session?.id !== currentSession.id) return;
-      pending = rows;
-      const el = document.querySelector("#widget-outbox");
-      if (el) {
-        el.innerHTML = outboxHTML(rows, E);
-        bindOutbox(el, outbox);
-      }
-    },
-  });
-  document.querySelector("#widget-handoff").hidden = false;
+  document.querySelector("#widget-handoff").hidden =
+    appearanceConfig.showHandoffButton === false;
   bindComposer(root.querySelector("form"));
   document.querySelector("#widget-sound").onclick = (e) => {
     const enabled = messageSound.toggle();
-    e.currentTarget.textContent = enabled ? "🔔" : "🔕";
+
     e.currentTarget.setAttribute(
       "aria-label",
       enabled ? "声音：开" : "声音：关",
@@ -253,26 +355,23 @@ function chat() {
   document.querySelector("#upload-file").onclick = () =>
     document.querySelector("#widget-file").click();
   document.querySelector("#widget-file").onchange = upload;
-  root.querySelector("form").onsubmit = async (e) => {
-    e.preventDefault();
-    if (sending) return;
-    const form = e.currentTarget,
-      text = form.body.value.trim();
-    if (!text) return;
-    sending = true;
-    try {
-      await outbox.enqueue({
-        conversationId: session.id,
-        body: text,
-        direct: true,
-      });
-      form.body.value = "";
-      form.body.dispatchEvent(new Event("input", { bubbles: true }));
-    } catch (err) {
-      error(err.message);
-    } finally {
-      sending = false;
-    }
+  root.querySelector("form").onsubmit = (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const text = form.body.value.trim();
+    if (!text || !session) return;
+    const record = {
+      id: randomId(),
+      body: text,
+      session: { ...session },
+      state: "sending",
+    };
+    followLatest = true;
+    directMessages.set(record.id, record);
+    form.body.value = "";
+    form.body.dispatchEvent(new Event("input", { bubbles: true }));
+    drawDirectMessages();
+    sendDirect(record);
   };
   document.querySelector("#widget-handoff").onclick = async (e) => {
     const button = e.currentTarget;
@@ -303,11 +402,17 @@ async function upload(e) {
     return;
   }
   try {
-    await outbox.enqueue({
-      conversationId: current.id,
+    const record = {
+      id: randomId(),
+      body: "",
       file,
-      filename: file.name,
-    });
+      preview: URL.createObjectURL(file),
+      session: { ...current },
+      state: "sending",
+    };
+    followLatest = true;
+    directMessages.set(record.id, record);
+    await sendDirect(record);
   } catch (err) {
     error(err.message);
   } finally {
@@ -338,20 +443,26 @@ async function refresh() {
       )
     )
       messageSound.play();
+    for (const message of m)
+      if (message.client_id) {
+        const record = directMessages.get(message.client_id);
+        if (record?.preview) URL.revokeObjectURL(record.preview);
+        directMessages.delete(message.client_id);
+      }
+    const newReply = knownMessages && m.some(x => !knownMessages.has(x.id) && x.role !== "visitor");
     knownMessages = new Set(m.map((x) => x.id));
     if (json !== last) {
       last = json;
       const el = document.querySelector("#messages");
       if (el) {
-        const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 90;
         el.innerHTML =
           withMessageDays(
             m,
             (x) =>
-              `<div class="message ${x.role === "visitor" ? "agent" : ""}"><div class="bubble ${x.attachment ? "attachment-bubble" : ""}">${x.attachment ? media.render(x.attachment) : renderMessage(x.body, { plain: x.role === "visitor" })}</div><div class="small">${x.role === "visitor" ? "你" : x.source === "ai" ? "AI 助手" : x.source === "system" ? "系统" : E(x.senderName || "客服")} · ${new Date(x.created).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}${x.role === "visitor" ? " " + receiptMarkup(x.seq, d.receipts) : ""}</div></div>`,
+              `<div class="message ${x.role === "visitor" ? "agent" : "with-sender-avatar"}">${x.role !== "visitor" ? `<span class="sender-avatar">${x.senderAvatar ? `<img src="${E(x.senderAvatar)}" alt="客服头像">` : x.source === "ai" ? "✧" : ["system", "welcome"].includes(x.source) ? "·" : E((x.senderName || "客服").slice(0, 1))}</span><div class="sender-name">${x.source === "ai" ? "AI 助手" : ["system", "welcome"].includes(x.source) ? "系统" : E(x.senderName || "客服")}</div>` : ""}<div class="message-line"><div class="bubble ${x.attachment ? "attachment-bubble" : ""}"><div class="bubble-content" ${x.source === "welcome" ? "data-welcome" : ""}>${x.attachment ? media.render(x.attachment) : renderMessage(x.source === "welcome" ? (document.documentElement.lang.startsWith("en") ? appearanceConfig.welcomeMessageEn : appearanceConfig.welcomeMessageZh) || x.body : x.body, { plain: x.role === "visitor" })}</div><span class="message-time">${new Date(x.created).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}${x.role === "visitor" ? " " + receiptMarkup(x.seq, d.receipts) : ""}</span></div></div></div>`,
           ) +
           (a.typing
-            ? `<div class="message"><div class="bubble ai-stream">${E(a.draft || "正在思考…")}<span class="typing-dot"></span></div><div class="small">AI 助手 · 正在回复</div></div>`
+            ? `<div class="message with-sender-avatar"><span class="sender-avatar">${a.aiAvatar ? `<img src="${E(a.aiAvatar)}" alt="AI客服头像">` : "✧"}</span><div class="sender-name">AI 助手</div><div class="message-line"><div class="bubble ai-stream">${E(a.draft || "正在思考…")}<span class="typing-dot"></span></div></div></div>`
             : "");
         if (!m.length && !a.typing)
           el.innerHTML =
@@ -364,9 +475,14 @@ async function refresh() {
             input.focus();
           }
         });
-        if (atBottom) el.scrollTop = el.scrollHeight;
+        if (newReply || a.typing || followLatest) {
+          followLatest = true;
+          scrollLatest();
+          followLatest = false;
+        }
       }
     }
+    drawDirectMessages();
     const seq = d.receipts?.lastSeq || 0,
       box = document.querySelector("#messages"),
       visible =
@@ -446,8 +562,10 @@ root.addEventListener(
   },
   true,
 );
-if (session) chat();
-else start();
+if (!new URL(location.href).searchParams.has("sdkBootstrap")) {
+  if (session) chat();
+  else start();
+}
 
 if ("serviceWorker" in navigator)
   navigator.serviceWorker.register("/sw.js").catch(() => {});

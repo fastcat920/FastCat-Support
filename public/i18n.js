@@ -1,5 +1,16 @@
 // UI text only. Customer messages, code, and input values are preserved.
 export const english = {
+  回复分类: "Reply categories",
+  管理回复分类: "Manage reply categories",
+  添加分类: "Add category",
+  重命名分类: "Rename category",
+  删除分类: "Delete category",
+  分类名称: "Category name",
+  分类已保存: "Category saved",
+  请先添加分类: "Add a category first",
+  "搜索回复内容…": "Search reply content…",
+  "搜索分类或回复内容…": "Search categories or reply content…",
+
   工作空间: "Workspace",
   账号状态: "Account status",
   搜索成员: "Search members",
@@ -135,7 +146,7 @@ export const english = {
   消息内容: "Message",
   "请输入消息…": "Type a message…",
   "输入消息…": "Type a message…",
-  "输入消息...": "Type a message…",
+  "输入消息...": "Type a message...",
   请输入消息内容: "Enter a message",
   "回车发送，Shift+回车换行": "Enter to send, Shift+Enter for a new line",
   "Enter 发送 · Shift+Enter 换行": "Enter to send · Shift+Enter for a new line",

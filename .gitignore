@@ -13,3 +13,9 @@ sdk/**/.flutter-plugins-dependencies
 .env.*
 !.env.example
 *.log
+
+# Local verification captures and deployment credentials
+artifacts/
+secrets/
+*.p8
+*firebase-adminsdk*.json

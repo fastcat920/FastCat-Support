@@ -1,3 +1,4 @@
+import { localizedError } from "./error-message.js";
 export function createMediaUI({ E, modal, getSession = () => null }) {
   const urls = new Map();
   function endpoint(id) {
@@ -31,7 +32,7 @@ export function createMediaUI({ E, modal, getSession = () => null }) {
         : (n / 1048576).toFixed(1) + " MB";
   function render(a) {
     if (!a) return "";
-    return `<div class="message-attachment">${a.mime.startsWith("image/") ? `<button type="button" class="attachment-image-button" data-image-open="${a.id}" data-filename="${E(a.filename)}"><img class="attachment-image" data-image="${a.id}" alt="${E(a.filename)}" loading="lazy"></button>` : ""}<button type="button" class="attachment-download" data-download="${a.id}" data-filename="${E(a.filename)}"><span class="attachment-icon">${a.mime.startsWith("image/") ? "▧" : "▤"}</span><span><strong>${E(a.filename)}</strong><small>${size(a.size)} · 点击下载</small></span><span>↧</span></button></div>`;
+    return `<div class="message-attachment">${a.mime.startsWith("image/") ? `<button type="button" class="attachment-image-button" data-image-open="${a.id}" data-filename="${E(a.filename)}"><img class="attachment-image" data-image="${a.id}" alt="${E(a.filename)}" loading="lazy"></button>` : ""}<button ${a.mime.startsWith("image/") ? 'hidden style="display:none"' : ""} type="button" class="attachment-download" data-download="${a.id}" data-filename="${E(a.filename)}"><span class="attachment-icon">${a.mime.startsWith("image/") ? "▧" : "▤"}</span><span><strong>${E(a.filename)}</strong><small>${size(a.size)} · 点击下载</small></span><span>↧</span></button></div>`;
   }
   function bind(root) {
     if (!root) return;
@@ -119,6 +120,7 @@ export function createMediaUI({ E, modal, getSession = () => null }) {
       };
   }
   function showError(message) {
+    message = localizedError(message, document.documentElement.lang);
     if (modal) modal("附件", `<p class="error">${E(message)}</p>`, "关闭");
     else {
       const error = document.querySelector(".error");

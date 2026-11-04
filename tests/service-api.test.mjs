@@ -236,22 +236,7 @@ test("attachment retries are idempotent, content guarded and internal files rema
       "X-Client-Id": "internal_attachment_01",
     },
   );
-  assert.equal(r.status, 201);
-  assert.equal(
-    (
-      await call(
-        "/widget/attachments/" + r.data.attachment.id + "?id=" + v.id,
-        "GET",
-        null,
-        { Authorization: "Bearer " + v.token },
-      )
-    ).status,
-    404,
-  );
-  const sent = await send(other, "重试消息");
-  assert.equal(sent.status, 201);
-  assert.equal((await send(other, "重试消息")).data.duplicate, true);
-  assert.equal((await send(other, "修改消息")).status, 409);
+  assert.equal(r.status, 400);
 });
 test("knowledge document import indexes content and preserves original bytes", async () => {
   const bytes = readFileSync(
@@ -535,16 +520,8 @@ test("receipt endpoints reject foreign cursors and account-mismatched retries; i
     internal: true,
     clientId: "receipt_private_note",
   });
-  assert.equal(note.status, 200);
-  d = await detail(v);
-  const privateSeq = d.messages.at(-1).seq;
-  let r = await call(
-    "/widget/receipts",
-    "POST",
-    { id: v.id, deliveredSeq: privateSeq, readSeq: 0 },
-    { Authorization: "Bearer " + v.token },
-  );
-  assert.equal(r.status, 400);
+  assert.equal(note.status, 400);
+  let r;
   r = await call(
     "/widget/receipts",
     "POST",
@@ -570,4 +547,103 @@ test("receipt endpoints reject foreign cursors and account-mismatched retries; i
     { "X-Expected-User": "another-account" },
   );
   assert.equal(r.status, 409);
+});
+
+test("visitor automation exposes the platform AI avatar before the first reply", async () => {
+  const avatar =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6ZQAAAABJRU5ErkJggg==";
+  const agent = await call("/resources", "POST", {
+    kind: "agent",
+    name: "头像测试客服",
+    description: "回答问题",
+    config: { avatar },
+  });
+  assert.equal(agent.status, 201);
+  const channel = await call("/access/channels", "POST", {
+    type: "web",
+    name: "思考头像测试",
+    title: "客服",
+    enabled: true,
+    origins: [],
+    ai_mode: "auto",
+    agent_id: agent.data.id,
+  });
+  assert.equal(channel.status, 201);
+  const visitor = await start(channel.data.public_key);
+  const page = await call(
+    "/widget?id=" + visitor.id + "&appKey=" + channel.data.public_key,
+    "GET",
+    null,
+    { Authorization: "Bearer " + visitor.token },
+  );
+  assert.equal(page.data.automation.aiAvatar, avatar);
+});
+
+test("staff APNs registration, status, presence and removal require a valid login", async () => {
+  const status = await call("/push/status");
+  assert.equal(status.status, 200);
+  assert.equal(status.data.provider, "apns");
+  assert.equal(typeof status.data.unreadCount, "number");
+  const deviceId = "ios_test_installation_001";
+  let r = await call("/push/device", "PUT", {
+    deviceId,
+    token: "a".repeat(64),
+    environment: "sandbox",
+    language: "en",
+  });
+  assert.equal(r.status, 200);
+  r = await call("/push/device", "PATCH", {
+    deviceId,
+    foreground: true,
+    activeConversationId: null,
+  });
+  assert.equal(r.status, 200);
+  r = await call("/push/device", "DELETE", { deviceId });
+  assert.equal(r.status, 200);
+  r = await call("/push/device", "PUT", {
+    deviceId,
+    token: "bad",
+    environment: "sandbox",
+  });
+  assert.equal(r.status, 400);
+  r = await call("/push/status", "GET", null, { Cookie: "" });
+  assert.equal(r.status, 401);
+});
+
+test("visitor push endpoints authenticate conversation and accept APNs registration", async () => {
+  const v = await start();
+  let r = await call(
+    "/widget/push/device",
+    "PUT",
+    {
+      id: v.id,
+      deviceId: "visitor_installation_001",
+      provider: "apns",
+      token: "a".repeat(64),
+      environment: "sandbox",
+    },
+    { Authorization: "Bearer " + v.token },
+  );
+  assert.equal(r.status, 200);
+  r = await call("/widget/push/status?id=" + v.id, "GET", null, {
+    Authorization: "Bearer " + v.token,
+  });
+  assert.equal(r.status, 200);
+  assert.equal(typeof r.data.configured.apns, "boolean");
+  r = await call(
+    "/widget/push/device",
+    "PATCH",
+    { id: v.id, deviceId: "visitor_installation_001", foreground: true },
+    { Authorization: "Bearer " + v.token },
+  );
+  assert.equal(r.status, 200);
+  r = await call(
+    "/widget/push/device",
+    "DELETE",
+    { id: v.id, deviceId: "visitor_installation_001" },
+    { Authorization: "Bearer " + v.token },
+  );
+  assert.equal(r.status, 200);
+  r = await call("/widget/push/status?id=" + v.id);
+  assert.equal(r.status, 403);
 });

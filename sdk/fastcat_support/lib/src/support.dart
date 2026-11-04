@@ -1,3 +1,6 @@
+import 'repairs.dart';
+import 'assistance.dart';
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -48,7 +51,10 @@ class FastCatSupport {
       required String appKey,
       this.user,
       FastCatSessionStore? store,
-      http.Client? httpClient})
+      http.Client? httpClient,
+      Map<String, FastCatDiagnosticHandler> diagnosticHandlers = const {},
+      Map<String, FastCatRepairHandler> repairHandlers = const {},
+      Future<List<FastCatRouteOption>> Function()? routeOptions})
       : store = store ?? const FastCatSecureSessionStore() {
     if (user != null && user!.id.trim().isEmpty) {
       throw ArgumentError(
@@ -61,6 +67,11 @@ class FastCatSupport {
         store: this.store,
         sessionScope: scope,
         client: httpClient);
+    client.diagnosticHandlers = Map.of(diagnosticHandlers);
+    client.repairHandlers = Map.of(repairHandlers);
+    client.routeOptions = routeOptions;
+    unawaited(
+        client.configuration().then<void>((_) {}, onError: (Object _) {}));
     _emailKey =
         'fastcat:email:${baseUrl.origin}:$appKey:${Uri.encodeComponent(scope)}';
   }
@@ -228,16 +239,21 @@ class _SupportEntryState extends State<FastCatSupportView> {
           pickAttachment: widget.pickAttachment,
           onAttachment: widget.onAttachment);
     return Scaffold(
-        appBar: widget.showHeader
-            ? AppBar(title: Text(widget.title ?? _t('在线客服', 'Support')))
-            : null,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xff111216)
+            : const Color(0xfff8f9fc),
         body: Center(
             child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 420),
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      if (_busy) const CircularProgressIndicator(),
+                      if (_busy)
+                        const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.grey)),
                       if (!_busy && _needsEmail) ...[
                         TextField(
                             controller: _email,
@@ -253,7 +269,7 @@ class _SupportEntryState extends State<FastCatSupportView> {
                       ],
                       if (_error != null) ...[
                         const SizedBox(height: 12),
-                        Text(_error!,
+                        Text(supportError(_error!, _t('zh', 'en') == 'en'),
                             style: TextStyle(
                                 color: Theme.of(context).colorScheme.error)),
                         if (!_needsEmail && !_busy)

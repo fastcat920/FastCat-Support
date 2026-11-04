@@ -24,18 +24,18 @@ export function createManagementUI({
   const field = (key, label, value = "", type = "text", required = true) =>
     `<div class="field"><label for="mg-${key}">${label}</label><input id="mg-${key}" name="${key}" type="${type}" value="${E(value)}" ${required ? "required" : ""}></div>`;
   const heading = (t, d, button = "") =>
-    `<div class="page-heading"><div><h1>${t}</h1><p>${d}</p></div>${button}</div>`;
+    button ? `<div class="page-actions">${button}</div>` : "";
   const empty = (t, d) =>
     `<div class="empty"><strong>${t}</strong><p>${d}</p></div>`;
   let lastPage = "";
   let epoch = 0,
     tab = "members",
     query = "",
-    category = "all";
+    category = null;
   async function render(page) {
     if (page !== lastPage) {
       query = "";
-      category = "all";
+      category = null;
       lastPage = page;
     }
     const revision = ++epoch;
@@ -98,26 +98,31 @@ export function createManagementUI({
       return;
     }
     if (page === "replies") {
-      const rows = await api("/quick-replies");
+      const [rows, categoryRows] = await Promise.all([
+        api("/quick-replies"),
+        api("/quick-reply-categories"),
+      ]);
       if (revision !== epoch || !isActive(page)) return;
-      const categories = [...new Set(rows.map((r) => r.category))];
-      v.innerHTML = `<div class="content management-page">${heading("快捷回复", "沉淀常用话术，在会话中快速插入并按需调整。", me.role === "admin" ? '<button class="primary" id="new-quick-reply">＋ 新建快捷回复</button>' : "")}<div class="toolbar"><input id="reply-query" aria-label="搜索快捷回复" placeholder="搜索标题或回复内容…" value="${E(query)}"><select class="filter-select" id="reply-category" aria-label="回复分类"><option value="all">全部分类</option>${categories.map((c) => `<option ${category === c ? "selected" : ""}>${E(c)}</option>`).join("")}</select></div><div id="reply-library"></div></div>`;
+      const categories = categoryRows.map((r) => r.name);
+      if (category !== null && !categories.includes(category)) category = null;
+      v.innerHTML = `<div class="content management-page"><div class="reply-workspace"><aside class="reply-categories"><div class="row"><h2 style="flex:1">回复分类</h2>${me.role === "admin" ? '<button type="button" class="quiet" id="manage-reply-categories" aria-label="管理回复分类">管理</button>' : ""}</div><nav aria-label="回复分类">${[null, ...categories].map((c, i) => `<button type="button" data-reply-category="${i}" aria-pressed="${category === c}" class="${category === c ? "active" : ""}"><span>${c === null ? "全部分类" : E(c)}</span><span class="small">${c === null ? rows.length : rows.filter((r) => r.category === c).length}</span></button>`).join("")}</nav></aside><section class="reply-results"><div class="toolbar"><input id="reply-query" aria-label="搜索快捷回复" placeholder="搜索回复内容…" value="${E(query)}">${me.role === "admin" ? '<button class="primary" id="new-quick-reply">＋ 新建快捷回复</button>' : ""}</div><div id="reply-library"></div></section></div></div>`;
       const draw = () => {
         const list = rows.filter(
           (r) =>
-            (category === "all" || r.category === category) &&
-            (r.title + r.body).toLowerCase().includes(query.toLowerCase()),
+            (category === null || r.category === category) &&
+            r.body.toLowerCase().includes(query.toLowerCase()),
         );
         document.querySelector("#reply-library").innerHTML = list.length
-          ? `<div class="grid">${list.map((r) => `<article class="card quick-reply-card"><div class="row"><span class="badge neutral">${E(r.category)}</span>${me.role === "admin" ? `<button class="quiet danger" data-delete-reply="${r.id}" aria-label="删除 ${E(r.title)}" style="margin-left:auto">×</button>` : ""}</div><h3>${E(r.title)}</h3><p>${E(r.body)}</p><div class="card-actions">${me.role === "admin" ? `<button data-edit-reply="${r.id}">编辑</button>` : ""}<button data-copy-reply="${r.id}">复制内容</button></div></article>`).join("")}</div>`
+          ? `<div class="grid">${list.map((r) => `<article class="card quick-reply-card"><div class="row"><span class="badge neutral">${E(r.category)}</span>${me.role === "admin" ? `<button class="quiet danger" data-delete-reply="${r.id}" aria-label="删除快捷回复 ${E(r.body.slice(0, 30))}" style="margin-left:auto">×</button>` : ""}</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">${E(r.body)}</p><div class="card-actions">${me.role === "admin" ? `<button data-edit-reply="${r.id}">编辑</button>` : ""}<button data-copy-reply="${r.id}">复制内容</button></div></article>`).join("")}</div>`
           : empty("暂无快捷回复", "管理员可以添加接待、售后、物流等常用话术。");
-        document
-          .querySelectorAll("[data-edit-reply]")
-          .forEach(
-            (b) =>
-              (b.onclick = () =>
-                replyDialog(rows.find((r) => r.id === b.dataset.editReply))),
-          );
+        document.querySelectorAll("[data-edit-reply]").forEach(
+          (b) =>
+            (b.onclick = () =>
+              replyDialog(
+                rows.find((r) => r.id === b.dataset.editReply),
+                categories,
+              )),
+        );
         document.querySelectorAll("[data-copy-reply]").forEach(
           (b) =>
             (b.onclick = safe(async () => {
@@ -148,13 +153,25 @@ export function createManagementUI({
         query = e.target.value;
         draw();
       };
-      document.querySelector("#reply-category").onchange = (e) => {
-        category = e.target.value;
-        draw();
-      };
+      document.querySelectorAll("[data-reply-category]").forEach((button) => {
+        button.onclick = () => {
+          category = [null, ...categories][
+            Number(button.dataset.replyCategory)
+          ];
+          document.querySelectorAll("[data-reply-category]").forEach((item) => {
+            const active = item === button;
+            item.classList.toggle("active", active);
+            item.setAttribute("aria-pressed", String(active));
+          });
+          draw();
+        };
+      });
       document
         .querySelector("#new-quick-reply")
-        ?.addEventListener("click", () => replyDialog());
+        ?.addEventListener("click", () => replyDialog(undefined, categories));
+      document
+        .querySelector("#manage-reply-categories")
+        ?.addEventListener("click", () => categoryManager(categories));
       return;
     }
     if (page === "audit") {
@@ -286,11 +303,67 @@ export function createManagementUI({
       },
     );
   }
-  function replyDialog(item) {
+  function categoryManager(categories) {
+    const box = modal(
+      "回复分类",
+      `<div class="toolbar"><button type="button" id="add-reply-category" class="primary">＋ 添加分类</button></div><div>${categories.map((name, i) => `<div class="row" style="margin-top:12px;flex-wrap:wrap"><span style="flex:1;overflow-wrap:anywhere">${E(name)}</span><button type="button" data-rename-category="${i}">重命名</button><button type="button" class="danger" data-remove-category="${i}">删除</button></div>`).join("")}</div>`,
+      "关闭",
+    );
+    const refresh = async () => {
+      box.remove();
+      await render("replies");
+    };
+    const edit = (old) =>
+      modal(
+        old ? "重命名分类" : "添加分类",
+        field("name", "分类名称", old || ""),
+        "保存",
+        async (b) => {
+          await api(
+            "/quick-reply-categories" +
+              (old ? "/" + encodeURIComponent(old) : ""),
+            { method: old ? "PATCH" : "POST", body: JSON.stringify(b) },
+          );
+          if (category === old) category = b.name.trim();
+          toast("分类已保存");
+          await refresh();
+        },
+      );
+    box.querySelector("#add-reply-category").onclick = () => edit();
+    box
+      .querySelectorAll("[data-rename-category]")
+      .forEach(
+        (b) =>
+          (b.onclick = () =>
+            edit(categories[Number(b.dataset.renameCategory)])),
+      );
+    box.querySelectorAll("[data-remove-category]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          const name = categories[Number(b.dataset.removeCategory)];
+          modal(
+            "删除分类",
+            `<p>确定删除「${E(name)}」？请先移动或删除该分类下的快捷回复。</p>`,
+            "删除",
+            async () => {
+              await api("/quick-reply-categories/" + encodeURIComponent(name), {
+                method: "DELETE",
+              });
+              await refresh();
+            },
+          );
+        }),
+    );
+  }
+  function replyDialog(item, categories) {
+    if (!categories.length) {
+      toast("请先添加分类");
+      categoryManager(categories);
+      return;
+    }
     modal(
       item ? "编辑快捷回复" : "新建快捷回复",
-      field("title", "标题", item?.title || "") +
-        field("category", "分类", item?.category || "通用") +
+      `<div class="field"><label for="reply-category-select">分类</label><select id="reply-category-select" name="category" required>${categories.map((name) => `<option value="${E(name)}" ${name === (item?.category || (category !== null ? category : "通用")) ? "selected" : ""}>${E(name)}</option>`).join("")}</select></div>` +
         `<div class="field"><label for="reply-body">回复内容</label><textarea id="reply-body" name="body" class="document-content" required maxlength="5000">${E(item?.body || "")}</textarea></div><p class="small">支持 {{visitor.name}} 和 {{agent.name}}，插入会话时自动替换。</p>`,
       "保存",
       async (b) => {

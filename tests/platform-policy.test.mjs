@@ -656,3 +656,75 @@ test("attachment retries after closure do not reopen; a fresh attachment does re
     x.close();
   }
 });
+
+test("SDK follows default web settings and rejects independent edits", async () => {
+  const { db, channels, request } = setup();
+  const sdk = channels.list().find((c) => c.type === "sdk");
+  const web = channels.list().find((c) => c.type === "web" && c.is_default);
+  db.prepare(
+    "UPDATE access_channels SET title='Shared title',widget=?,ai_mode='off',enabled=0 WHERE id=?",
+  ).run(JSON.stringify({ themeColor: "#123456" }), web.id);
+  const effective = channels.policy(sdk.id);
+  assert.equal(effective.title, "Shared title");
+  assert.equal(effective.widget.themeColor, "#123456");
+  assert.equal(effective.ai_mode, "off");
+  assert.equal(effective.enabled, false);
+  assert.throws(() => channels.resolve(sdk.public_key));
+  await assert.rejects(
+    request("/api/access/channels/" + sdk.id, "PUT", {
+      expectedRevision: sdk.revision,
+    }),
+    /统一管理/,
+  );
+  db.prepare(
+    "UPDATE access_channels SET enabled=1,title='Updated' WHERE id=?",
+  ).run(web.id);
+  assert.equal(channels.resolve(sdk.public_key).title, "Updated");
+  assert.equal(channels.resolve(sdk.public_key).public_key, sdk.public_key);
+  db.close();
+});
+
+test("handoff button visibility defaults on and persists false for web and SDK config", async () => {
+  const { db, channels, request } = setup();
+  try {
+    const web = channels.list().find((c) => c.type === "web" && c.is_default);
+    const sdk = channels.list().find((c) => c.type === "sdk");
+    assert.equal(web.widget.showHandoffButton, true);
+    const payload = {
+      ...web,
+      expectedRevision: web.revision,
+      widget: { ...web.widget, showHandoffButton: false },
+    };
+    await request("/api/access/channels/" + web.id, "PUT", payload);
+    assert.equal(
+      channels.resolve(web.public_key).widget.showHandoffButton,
+      false,
+    );
+    assert.equal(
+      channels.resolve(sdk.public_key).widget.showHandoffButton,
+      false,
+    );
+    await assert.rejects(
+      request("/api/access/channels/" + web.id, "PUT", {
+        ...payload,
+        expectedRevision: web.revision + 1,
+        widget: { ...payload.widget, showHandoffButton: "false" },
+      }),
+      (e) => e.status === 400,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("bilingual welcome is persisted, bounded and marked for localized rendering", async () => {
+  const x = setup();
+  try {
+    const c = await x.channel("off", {widget: {welcomeMessageZh: "欢迎咨询", welcomeMessageEn: "Welcome"}});
+    const visitor = x.conversation(c.id);
+    const message = x.db.prepare("SELECT body,source FROM messages WHERE conversation_id=?").get(visitor.id);
+    assert.equal(message.source, "welcome");
+    assert.equal(message.body, "欢迎咨询");
+    await assert.rejects(x.channel("off", {widget: {welcomeMessageEn: "x".repeat(3001)}}), e => e.status === 400);
+  } finally { x.service.close?.(); x.db.close(); }
+});

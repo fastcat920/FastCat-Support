@@ -226,9 +226,13 @@ test("device screenshot enters model vision content without persisting image dat
         s += t;
       return s;
     })();
-    const task = (
-      await handle(x.devices, "/api/device-agent/poll", {}, d.token, true)
-    ).data.task;
+    let task;
+    for (let attempt = 0; attempt < 50 && !task; attempt++) {
+      task = (
+        await handle(x.devices, "/api/device-agent/poll", {}, d.token, true)
+      ).data.task;
+      if (!task) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     assert.ok(task);
     await handle(
       x.devices,

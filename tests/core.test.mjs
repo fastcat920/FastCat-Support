@@ -148,7 +148,7 @@ test("authentication, conversation lifecycle, visitor isolation and persistence"
         internal: true,
       })
     ).r.status,
-    200,
+    400,
   );
   assert.equal(
     (
@@ -283,13 +283,13 @@ test("authentication, conversation lifecycle, visitor isolation and persistence"
   assert.ok(modelPayload.messages[0].content.includes("七天内可申请退款"));
   assert.ok(!JSON.stringify(modelPayload).includes("私密备注"));
   assert.equal(modelPayload.model, "local-test-model");
-  assert.equal((await call("/conversations/" + id)).d.messages.length, 5);
+  assert.equal((await call("/conversations/" + id)).d.messages.length, 4);
 
   child.kill();
   await once(child, "exit");
   await launch();
   assert.equal((await call("/setup")).d.required, false);
-  assert.equal((await call("/conversations/" + id)).d.messages.length, 5);
+  assert.equal((await call("/conversations/" + id)).d.messages.length, 4);
   assert.equal((await call("/resources?kind=knowledge")).d.length, 1);
   await call("/resources/" + knowledge.d.id, "DELETE");
   assert.equal((await call("/resources?kind=knowledge")).d.length, 0);

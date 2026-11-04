@@ -1,3 +1,7 @@
+import { createUserPush } from "./lib/user-push.mjs";
+import { createPush } from "./lib/push.mjs";
+import { visitorAIContext } from "./lib/visitor-ai-context.mjs";
+import { createAssistance } from "./lib/assistance.mjs";
 import {
   visitorIdentity,
   cleanVisitorProfile,
@@ -125,6 +129,8 @@ const providers = createProviders(db, {
 });
 const skills = createSkills({ db });
 const devices = createDevices({ db });
+const assistance = createAssistance({ db, broadcast });
+setInterval(() => assistance.purge(), 3600000).unref();
 const preferences = createPreferences({ db });
 const modelCatalog = createModelCatalog({ db, providers });
 const retrieval = createRetrieval({
@@ -134,6 +140,8 @@ const retrieval = createRetrieval({
   broadcast: () => broadcast(),
 });
 const agentRunner = createAgentRunner({
+  visitorContext: (context) => visitorAIContext(db, context),
+  assistance,
   db,
   providers,
   knowledge: (q, c, l, options) => retrieval.lookup(q, c, l, options),
@@ -164,6 +172,12 @@ function verify(p, v) {
   return timingSafeEqual(Buffer.from(h, "hex"), scryptSync(p, s, 64));
 }
 let service, telegram;
+const push = createPush(db);
+const userPush = createUserPush(db);
+setInterval(() => {
+  userPush.drain().catch(() => console.error("User push worker failed"));
+  push.drain().catch(() => console.error("Push worker failed"));
+}, 5000).unref();
 const peers = new Set();
 const visitorPeers = new Map();
 const peerUsers = new Map();
@@ -171,6 +185,12 @@ function revokeSessions(id) {
   for (const [res, userId] of peerUsers) if (userId === id) res.end();
 }
 function broadcast(conversationId) {
+  try {
+    push.observe(conversationId);
+    userPush.observe(conversationId);
+  } catch {
+    console.error("Push enqueue failed");
+  }
   service?.observe(conversationId);
   telegram?.observe(conversationId);
   for (const p of peers) p.write("data: update\n\n");
@@ -206,12 +226,35 @@ function user(req) {
         .get(t, Date.now())
     : null;
 }
+function messageAvatars(id, rows) {
+  const conversation = db
+    .prepare("SELECT channel_id FROM conversations WHERE id=?")
+    .get(id);
+  const policy = conversation?.channel_id
+    ? channels.policy(conversation.channel_id)
+    : null;
+  const agent = policy?.agent_id
+    ? db
+        .prepare("SELECT config FROM resources WHERE kind='agent' AND id=?")
+        .get(policy.agent_id)
+    : null;
+  const aiAvatar = agent ? JSON.parse(agent.config || "{}").avatar || "" : "";
+  return rows.map((message) => ({
+    ...message,
+    senderAvatar:
+      message.source === "ai"
+        ? aiAvatar
+        : message.source === "system"
+          ? ""
+          : message.senderAvatar || "",
+  }));
+}
 function messages(id) {
   return decorateMessages(
     db,
     db
       .prepare(
-        "SELECT m.*,u.name senderName FROM messages m LEFT JOIN users u ON u.id=m.sender_id WHERE conversation_id=? ORDER BY m.created,m.rowid",
+        "SELECT m.*,u.name senderName,u.avatar senderAvatar FROM messages m LEFT JOIN users u ON u.id=m.sender_id WHERE conversation_id=? ORDER BY m.created,m.rowid",
       )
       .all(id),
   );
@@ -220,7 +263,10 @@ function messages(id) {
 function messagePage(id, url, visitor = false) {
   if (!url.searchParams.has("after"))
     return {
-      messages: messages(id).filter((m) => !visitor || m.role !== "note"),
+      messages: messageAvatars(
+        id,
+        messages(id).filter((m) => !visitor || m.role !== "note"),
+      ),
     };
   const after = Number(url.searchParams.get("after")),
     limit = Number(url.searchParams.get("limit") || 200);
@@ -234,10 +280,10 @@ function messagePage(id, url, visitor = false) {
     throw Error("消息游标或分页大小无效");
   const rows = db
     .prepare(
-      `SELECT m.*,u.name senderName FROM messages m LEFT JOIN users u ON u.id=m.sender_id WHERE conversation_id=? AND m.seq>? ${visitor ? "AND m.role!='note'" : ""} ORDER BY m.seq LIMIT ?`,
+      `SELECT m.*,u.name senderName,u.avatar senderAvatar FROM messages m LEFT JOIN users u ON u.id=m.sender_id WHERE conversation_id=? AND m.seq>? ${visitor ? "AND m.role!='note'" : ""} ORDER BY m.seq LIMIT ?`,
     )
     .all(id, after, limit + 1);
-  const page = decorateMessages(db, rows.slice(0, limit));
+  const page = messageAvatars(id, decorateMessages(db, rows.slice(0, limit)));
   return {
     messages: page,
     hasMore: rows.length > limit,
@@ -289,7 +335,7 @@ const server = http.createServer(async (req, res) => {
           : channels.resolve(url.searchParams.get("appKey"));
       res.setHeader(
         "Content-Security-Policy",
-        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' blob: https:; frame-ancestors 'self' " +
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' blob: data: https:; frame-ancestors 'self' " +
           (channel?.origins.join(" ") || "") +
           (channel?.type === "web" && channel.widget.allowLocalFilePreview
             ? " file:"
@@ -381,7 +427,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (p.startsWith("/api/widget")) {
       const b =
-        method === "POST" && p !== "/api/widget/attachments"
+        (method === "POST" ||
+          (p === "/api/widget/push/device" &&
+            ["PUT", "PATCH", "DELETE"].includes(method))) &&
+        p !== "/api/widget/attachments"
           ? await body(req)
           : {};
       if (p === "/api/widget/start" && method === "POST") {
@@ -424,6 +473,13 @@ const server = http.createServer(async (req, res) => {
       )
         return send(res, 403, { error: "会话凭据无效" });
       channels.authorize(req, url, c);
+      if (p === "/api/widget/push/device" || p === "/api/widget/push/status") {
+        if (p.endsWith("/status") && method !== "GET")
+          return send(res, 405, { error: "请求方法无效" });
+        return send(res, 200, userPush.handle({ ...c, token }, method, b));
+      }
+      if (p === "/api/widget/assistance")
+        return send(res, 200, assistance.visitor(c.id, method, b));
       if (p === "/api/widget/profile" && method === "POST") {
         const old = JSON.parse(c.profile || "{}");
         const profile = cleanVisitorProfile(b.profile ?? {});
@@ -523,7 +579,22 @@ const server = http.createServer(async (req, res) => {
       )
         return send(res, 403, { error: "来源无效" });
       authorize(u, url, method);
+      if (
+        await push.handle({
+          req,
+          res,
+          url,
+          u,
+          body,
+          send,
+          sessionToken: (req.headers.cookie || "").match(
+            /(?:^|;\s*)fc_session=([^;]+)/,
+          )?.[1],
+        })
+      )
+        return;
       for (const integration of [
+        assistance,
         channels,
         telegram,
         preferences,
@@ -597,6 +668,8 @@ const server = http.createServer(async (req, res) => {
       }
       const upload = p.match(/^\/api\/conversations\/([^/]+)\/attachments$/);
       if (upload && method === "POST") {
+        if (req.headers["x-internal-note"] === "1")
+          return send(res, 400, { error: "内部备注功能已移除" });
         const filename = uploadFilename(req);
         const c = conversation(upload[1]);
         if (!c) return send(res, 404, { error: "会话不存在" });
@@ -607,7 +680,6 @@ const server = http.createServer(async (req, res) => {
             user: u,
             filename,
             data,
-            internal: req.headers["x-internal-note"] === "1",
             clientId: req.headers["x-client-id"],
           });
         broadcast(c.id);
@@ -866,6 +938,7 @@ const server = http.createServer(async (req, res) => {
             .map((m) => ({
               role: m.role === "visitor" ? "user" : "assistant",
               content: m.body,
+              attachment_id: m.attachment_id,
             }));
         }
         if (b.question)
@@ -1134,7 +1207,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const data = readFileSync(path);
       res.writeHead(200, {
-        ...(p === "/embed.js" ? { "Cache-Control": "no-cache" } : {}),
+        "Cache-Control": "no-cache",
         "Content-Type":
           {
             ".html": "text/html; charset=utf-8",

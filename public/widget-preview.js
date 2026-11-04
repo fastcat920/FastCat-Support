@@ -43,6 +43,8 @@ window.addEventListener("message", (event) => {
   )
     return;
   const value = event.data.config || {};
+  document.querySelector("#widget-handoff").hidden =
+    value.showHandoffButton === false;
   const appearance = resolveAppearance(
     value,
     { language: value.hostLanguage, theme: value.hostTheme },
@@ -54,11 +56,11 @@ window.addEventListener("message", (event) => {
   setLanguage(appearance.language);
   applyAppearance(appearance);
   document.querySelector(".widget-shell header h2").textContent =
-    typeof value.title === "string" ? value.title.slice(0, 150) : "";
+    (appearance.language === "en" ? value.titleEn : value.titleZh) ||
+    value.title ||
+    "";
   bubble.textContent =
-    typeof value.welcomeMessage === "string"
-      ? value.welcomeMessage.slice(0, 3000)
-      : "";
+    (appearance.language === "en" ? value.welcomeMessageEn : value.welcomeMessageZh) || value.welcomeMessage || "";
   welcome.hidden = !bubble.textContent;
   document.querySelector(".widget-logo")?.remove();
   if (

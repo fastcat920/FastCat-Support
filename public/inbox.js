@@ -1,3 +1,4 @@
+import { openAssistance } from "./assistance.js";
 import { withMessageDays } from "./message-days.js";
 import { receiptMarkup } from "./message-status.js";
 import { nextConversation } from "./inbox-selection.js";
@@ -47,8 +48,7 @@ export function createInboxUI({
     mounted: false,
     userId: null,
   };
-  const internal = new Map(),
-    requestIds = new Map(),
+  const requestIds = new Map(),
     sending = new Set();
   const uploading = new Set();
   let queryTimer,
@@ -98,6 +98,8 @@ export function createInboxUI({
         owner: "staff:" + ownerId,
         canSend: () => getMe()?.id === ownerId,
         send: async (r) => {
+          if (r.internal)
+            throw Error("内部备注功能已移除，请移除这条旧待发记录");
           let response;
           if (r.file) {
             response = await fetch(
@@ -107,7 +109,6 @@ export function createInboxUI({
                 headers: {
                   "X-Expected-User": ownerId,
                   "X-Filename": encodeURIComponent(r.filename),
-                  "X-Internal-Note": r.internal ? "1" : "0",
                   "X-Client-Id": r.id,
                 },
                 body: r.file,
@@ -124,7 +125,6 @@ export function createInboxUI({
                 },
                 body: JSON.stringify({
                   body: r.body,
-                  internal: r.internal,
                   clientId: r.id,
                 }),
               },
@@ -155,7 +155,6 @@ export function createInboxUI({
         q: "",
       };
       state.offset = 0;
-      internal.clear();
       requestIds.clear();
       sending.clear();
       uploading.clear();
@@ -536,7 +535,7 @@ export function createInboxUI({
     const c = data.conversation;
     if (initial) {
       document.querySelector("#chat").innerHTML =
-        `<div class="chat-head" id="chat-head"></div><p id="chat-list-context" class="chat-list-context small" hidden>当前会话不在左侧筛选结果或当前页中。</p><div class="messages" id="messages"></div><div id="staff-outbox"></div><div id="automation-banner" class="automation-banner" hidden></div><form class="composer" id="reply-form"><input id="staff-file" type="file" hidden><textarea id="reply" name="body" placeholder="输入回复内容…" aria-label="回复消息" required maxlength="10000"></textarea><div class="composer-footer"><div class="row composer-actions"><label class="composer-mode"><input name="internal" type="checkbox" ${internal.get(id) ? "checked" : ""} aria-label="内部备注"><span class="mode-public">公开回复</span><span class="mode-note">内部备注</span></label><button type="button" class="quiet small" id="upload-attachment" aria-label="上传并发送附件">⌁ 附件</button><button type="button" class="quiet small" id="quick-replies">快捷回复</button><button type="button" class="quiet small" id="ai-draft">✧ AI 草稿</button></div><button class="primary" id="send-reply" type="submit">发送 ↗</button></div></form>`;
+        `<div class="chat-head" id="chat-head"></div><p id="chat-list-context" class="chat-list-context small" hidden>当前会话不在左侧筛选结果或当前页中。</p><div class="messages" id="messages"></div><div id="staff-outbox"></div><div id="automation-banner" class="automation-banner" hidden></div><form class="composer" id="reply-form"><input id="staff-file" type="file" hidden><textarea id="reply" name="body" placeholder="输入回复内容…" aria-label="回复消息" required maxlength="10000"></textarea><div class="composer-footer"><div class="row composer-actions"><button type="button" class="quiet small" id="upload-attachment" aria-label="上传并发送附件">⌁ 附件</button><button type="button" class="quiet small" id="quick-replies">快捷回复</button><button type="button" class="quiet small" id="ai-draft">✧ AI 草稿</button></div><button class="primary" id="send-reply" type="submit">发送 ↗</button></div></form>`;
       document.querySelector("#upload-attachment").onclick = () =>
         document.querySelector("#staff-file").click();
       document.querySelector("#staff-file").onchange = safe(async (event) => {
@@ -544,40 +543,27 @@ export function createInboxUI({
         if (!file || uploading.has(id)) return;
         if (!file.size || file.size > 8 * 1024 * 1024)
           throw Error("请选择不超过 8 MB 的非空文件");
-        const note = document.querySelector("#reply-form").internal.checked;
         await outbox.enqueue({
           conversationId: id,
           file,
           filename: file.name,
-          internal: note,
         });
         event.target.value = "";
       });
       const textarea = document.querySelector("#reply");
       textarea.value = drafts.get(id) || "";
       textarea.oninput = (e) => drafts.set(id, e.target.value);
-      document.querySelector("#reply-form").internal.onchange = (e) => {
-        internal.set(id, e.target.checked);
-        document
-          .querySelector("#reply-form")
-          .classList.toggle("internal-mode", e.target.checked);
-      };
-      document
-        .querySelector("#reply-form")
-        .classList.toggle("internal-mode", !!internal.get(id));
       document.querySelector("#reply-form").onsubmit = safe(async (e) => {
         e.preventDefault();
         if (sending.has(id)) return;
         const form = e.currentTarget,
-          text = form.body.value.trim(),
-          note = form.internal.checked;
+          text = form.body.value.trim();
         if (!text) return;
         sending.add(id);
         try {
           await outbox.enqueue({
             conversationId: id,
             body: text,
-            internal: note,
             direct: true,
           });
           drafts.delete(id);
@@ -610,7 +596,7 @@ export function createInboxUI({
     if (headerKey !== state.headerKey) {
       state.headerKey = headerKey;
       document.querySelector("#chat-head").innerHTML =
-        `<div class="chat-heading"><button class="quiet chat-back" id="back-list" aria-label="返回会话列表">←</button><div><strong>${E(c.name)} <span class="badge neutral">${statusNames[c.status]}</span></strong><button class="quiet small" id="edit-subject" title="编辑主题">${E(c.subject)} ✎</button></div></div><div class="row chat-actions"><button class="quiet" id="show-visitor">访客资料</button>${!c.assignee && c.status !== "closed" ? '<button id="claim-conversation" type="button">接入会话</button>' : ""}<select id="chat-owner" aria-label="分配客服">${options(state.members, c.assignee)}</select><select id="chat-status" aria-label="会话状态">${Object.entries(
+        `<div class="chat-heading"><button class="quiet chat-back" id="back-list" aria-label="返回会话列表">←</button><div><strong>${E(c.name)} <span class="badge neutral">${statusNames[c.status]}</span></strong><button class="quiet small" id="edit-subject" title="编辑主题">${E(c.subject)} ✎</button></div></div><div class="row chat-actions"><button class="quiet" id="show-visitor">访客资料</button><button id="show-assistance">诊断与修复</button>${!c.assignee && c.status !== "closed" ? '<button id="claim-conversation" type="button">接入会话</button>' : ""}<select id="chat-owner" aria-label="分配客服">${options(state.members, c.assignee)}</select><select id="chat-status" aria-label="会话状态">${Object.entries(
           statusNames,
         )
           .map(
@@ -620,6 +606,8 @@ export function createInboxUI({
           .join(
             "",
           )}</select><button id="follow" class="${c.status === "closed" ? "" : "quiet"}">${c.status === "closed" ? "重新打开" : "结束会话"}</button></div>`;
+      document.querySelector("#show-assistance").onclick = () =>
+        openAssistance({ api, E, modal, toast, conversationId: c.id });
       document.querySelector("#back-list").onclick = () => {
         state.active = null;
         state.detail = null;
@@ -858,20 +846,18 @@ export function createInboxUI({
       const rows = await api("/quick-replies");
       const o = modal(
         "插入快捷回复",
-        '<input id="quick-query" aria-label="搜索话术" placeholder="搜索标题、分类或内容…"><div id="quick-options" class="global-results"></div>',
+        '<input id="quick-query" aria-label="搜索话术" placeholder="搜索分类或回复内容…"><div id="quick-options" class="global-results"></div>',
         "关闭",
       );
       const draw = (q) => {
         const list = rows.filter((r) =>
-          (r.title + r.category + r.body)
-            .toLowerCase()
-            .includes(q.toLowerCase()),
+          (r.category + r.body).toLowerCase().includes(q.toLowerCase()),
         );
         o.querySelector("#quick-options").innerHTML = list.length
           ? list
               .map(
                 (r) =>
-                  `<button type="button" class="search-result" data-insert-reply="${r.id}"><strong>${E(r.title)} <span class="badge neutral">${E(r.category)}</span></strong><span class="small">${E(r.body.slice(0, 160))}</span></button>`,
+                  `<button type="button" class="search-result" data-insert-reply="${r.id}"><strong><span class="badge neutral">${E(r.category)}</span></strong><span class="small">${E(r.body.slice(0, 160))}</span></button>`,
               )
               .join("")
           : '<p class="small">暂无匹配话术。管理员可在快捷回复页面维护。</p>';

@@ -8,13 +8,15 @@ export function createSettingsUI({
   onProfile,
 }) {
   let section = "profile";
-  const safe = (fn) => async () => {
-    try {
-      await fn();
-    } catch (e) {
-      toast(e.message);
-    }
-  };
+  const safe =
+    (fn) =>
+    async (...args) => {
+      try {
+        await fn(...args);
+      } catch (e) {
+        toast(e.message);
+      }
+    };
   async function render() {
     const me = getMe();
     const tabs = [
@@ -24,7 +26,7 @@ export function createSettingsUI({
       ["about", "关于"],
     ];
     document.querySelector("#view").innerHTML =
-      `<div class="content"><div class="page-heading"><h1>设置</h1></div><div class="tabs">${tabs.map(([id, name]) => `<button data-settings="${id}" class="${id === section ? "active" : ""}">${name}</button>`).join("")}</div><section id="settings-panel" class="panel"></section></div>`;
+      `<div class="content"><div class="tabs">${tabs.map(([id, name]) => `<button data-settings="${id}" class="${id === section ? "active" : ""}">${name}</button>`).join("")}</div><section id="settings-panel" class="panel"></section></div>`;
     document.querySelectorAll("[data-settings]").forEach(
       (b) =>
         (b.onclick = safe(async () => {
@@ -38,7 +40,7 @@ export function createSettingsUI({
     );
     const el = document.querySelector("#settings-panel");
     if (section === "profile") {
-      el.innerHTML = `<h2>个人资料</h2><p>${E(me.email)} · ${me.role === "admin" ? "管理员" : "客服"}</p><form><div class="profile-avatar"><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div><label>上传头像<input id="profile-avatar" type="file" accept="image/png,image/jpeg,image/webp"></label><span class="small">自动裁切为正方形，最大 5 MB</span></div><div class="field"><label>姓名<input name="name" maxlength="100" required value="${E(me.name)}"></label></div><button class="primary">保存资料</button></form><h3>在线状态</h3><p>状态不会影响已有会话。</p><select id="profile-presence" aria-label="在线状态">${Object.entries(
+      el.innerHTML = `<h2>个人资料</h2><p>${E(me.email)} · ${me.role === "admin" ? "管理员" : "客服"}</p><form><div class="profile-avatar"><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div><label>上传头像<input id="profile-avatar" type="file" accept="image/png,image/jpeg,image/webp"></label><span class="small">自动裁切为 100×100 像素，最大 5 MB</span></div><div class="field"><label>姓名<input name="name" maxlength="100" required value="${E(me.name)}"></label></div><button class="primary">保存资料</button></form><h3>在线状态</h3><p>状态不会影响已有会话。</p><select id="profile-presence" aria-label="在线状态">${Object.entries(
         { available: "在线", away: "忙碌", offline: "离线" },
       )
         .map(
@@ -55,35 +57,41 @@ export function createSettingsUI({
           !["image/png", "image/jpeg", "image/webp"].includes(file.type)
         )
           throw Error("请选择 5 MB 以内的 PNG、JPEG 或 WebP 图片");
-        const image = await createImageBitmap(file);
-        const canvas = document.createElement("canvas");
-        canvas.width = canvas.height = 192;
-        const side = Math.min(image.width, image.height);
-        canvas
-          .getContext("2d")
-          .drawImage(
-            image,
-            (image.width - side) / 2,
-            (image.height - side) / 2,
-            side,
-            side,
-            0,
-            0,
-            192,
-            192,
+        const save = el.querySelector("form button.primary");
+        save.disabled = true;
+        try {
+          const image = await createImageBitmap(file);
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 100;
+          const side = Math.min(image.width, image.height);
+          canvas
+            .getContext("2d")
+            .drawImage(
+              image,
+              (image.width - side) / 2,
+              (image.height - side) / 2,
+              side,
+              side,
+              0,
+              0,
+              100,
+              100,
+            );
+          image.close();
+          avatar = canvas.toDataURL("image/webp", 0.85);
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/webp", 0.85),
           );
-        image.close();
-        avatar = canvas.toDataURL("image/webp", 0.85);
-        const blob = await new Promise((resolve) =>
-          canvas.toBlob(resolve, "image/webp", 0.85),
-        );
-        const previewURL = URL.createObjectURL(blob);
-        const preview = document.createElement("img");
-        preview.alt = "个人头像预览";
-        preview.src = previewURL;
-        preview.onload = preview.onerror = () =>
-          URL.revokeObjectURL(previewURL);
-        el.querySelector(".profile-avatar .avatar").replaceChildren(preview);
+          const previewURL = URL.createObjectURL(blob);
+          const preview = document.createElement("img");
+          preview.alt = "个人头像预览";
+          preview.src = previewURL;
+          preview.onload = preview.onerror = () =>
+            URL.revokeObjectURL(previewURL);
+          el.querySelector(".profile-avatar .avatar").replaceChildren(preview);
+        } finally {
+          save.disabled = false;
+        }
       });
       el.querySelector("form").onsubmit = async (e) => {
         e.preventDefault();

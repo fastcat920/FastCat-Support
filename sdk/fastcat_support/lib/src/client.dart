@@ -1,3 +1,5 @@
+import 'repairs.dart';
+import 'assistance.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -28,9 +30,132 @@ enum FastCatConnectionStatus {
 }
 
 class FastCatClient {
+  final String consentSessionId = newClientId();
+  final Set<String> activeConsentIds = {};
+  bool get isClosed => _closed;
+  Future<void> endAssistance() async {
+    activeConsentIds.clear();
+    if (_session == null || _diagnosticDevice == null || _closed) return;
+    try {
+      await assistance(action: 'scope_end', data: {
+        'deviceId': _diagnosticDevice,
+        'consentSessionId': consentSessionId
+      }).timeout(const Duration(seconds: 2));
+    } catch (_) {}
+  }
+
+  /// Supported keys: basic, status, network, logs, routes. The host must redact secrets.
+  Map<String, FastCatDiagnosticHandler> diagnosticHandlers = {};
+  Map<String, FastCatRepairHandler> repairHandlers = {};
+
+  /// Read local metadata only: at most three alternate routes, opaque IDs and redacted names.
+  Future<List<FastCatRouteOption>> Function()? routeOptions;
+  late final FastCatRepairCoordinator repairs = FastCatRepairCoordinator(this);
+  String get repairStorageKey => '$_storeKey:repairs:$conversationId';
+  String? _diagnosticDevice;
+  Future<String> diagnosticDeviceId() async {
+    if (_diagnosticDevice != null) return _diagnosticDevice!;
+    final key = '$_storeKey:diagnostic-device';
+    final saved = await store?.read(key);
+    _diagnosticDevice = saved ?? newClientId();
+    if (saved == null) await store?.write(key, _diagnosticDevice!);
+    return _diagnosticDevice!;
+  }
+
+  String? _pushDeviceId;
+  bool _pushChatVisible = false;
+
+  /// Host supplies its APNs/FCM token after starting/restoring the session.
+  Future<Map<String, dynamic>> registerPushDevice(
+      {required String deviceId,
+      required String token,
+      required String provider,
+      String environment = 'production',
+      String language = 'zh',
+      bool enabled = true}) async {
+    if (!hasSession) throw StateError('Start or restore a session first');
+    final result = await _json('/push/device', method: 'PUT', body: {
+      'id': conversationId,
+      'deviceId': deviceId,
+      'token': token,
+      'provider': provider,
+      'environment': environment,
+      'language': language,
+      'enabled': enabled
+    });
+    _pushDeviceId = deviceId;
+    await setPushChatVisible(_pushChatVisible);
+    return result;
+  }
+
+  Future<Map<String, dynamic>> pushStatus() =>
+      _json('/push/status', query: {'id': conversationId!});
+
+  /// Used automatically by FastCatChat; custom chat UIs should heartbeat every 30s.
+  Future<void> setPushChatVisible(bool visible) async {
+    _pushChatVisible = visible;
+    if (_pushDeviceId == null || !hasSession || _closed) return;
+    await _json('/push/device', method: 'PATCH', body: {
+      'id': conversationId,
+      'deviceId': _pushDeviceId,
+      'foreground': visible
+    });
+  }
+
+  Future<void> unregisterPushDevice() async {
+    if (_pushDeviceId == null || !hasSession) return;
+    await _json('/push/device',
+        method: 'DELETE',
+        body: {'id': conversationId, 'deviceId': _pushDeviceId});
+    _pushDeviceId = null;
+  }
+
+  Future<Map<String, dynamic>> assistance(
+      {String? action, Map<String, dynamic> data = const {}}) {
+    _requireSession();
+    return _json('/assistance',
+        method: action == null ? 'GET' : 'POST',
+        body: action == null
+            ? null
+            : {'id': conversationId, 'action': action, ...data},
+        query: action == null ? {'id': conversationId!} : const {});
+  }
+
   final _connectionEvents =
       StreamController<FastCatConnectionStatus>.broadcast();
   final _readEvents = StreamController<int>.broadcast();
+  final _unreadEvents = StreamController<int>.broadcast();
+  final _messageEvents = StreamController<Map<String, dynamic>>.broadcast();
+  final _unreadSequences = <int>{};
+  final _seenNotificationSequences = <int>{};
+  bool _notificationBaseline = false;
+  int get unreadCount => _unreadSequences.length;
+  Stream<int> get unreadCountStream => _unreadEvents.stream;
+
+  /// New remote messages after initial history; host may play its own sound.
+  Stream<Map<String, dynamic>> get incomingMessageStream =>
+      _messageEvents.stream;
+  void _publishUnread() {
+    _unreadSequences.removeWhere((seq) => seq <= _readCursor);
+    if (!_closed) _unreadEvents.add(unreadCount);
+  }
+
+  void _observePage(Map<String, dynamic> page) {
+    for (final value in page['messages'] as List? ?? const []) {
+      final message = Map<String, dynamic>.from(value as Map);
+      final seq = message['seq'];
+      if (seq is! int ||
+          message['role'] == 'visitor' ||
+          message['source'] == 'system') continue;
+      if (seq > _readCursor) _unreadSequences.add(seq);
+      if (_seenNotificationSequences.add(seq) &&
+          _notificationBaseline &&
+          !_closed) _messageEvents.add(message);
+    }
+    if (page['hasMore'] != true) _notificationBaseline = true;
+    _publishUnread();
+  }
+
   FastCatConnectionStatus _connectionStatus = FastCatConnectionStatus.idle;
   int _watchers = 0, _readCursor = 0;
   FastCatConnectionStatus get connectionStatus => _connectionStatus;
@@ -100,8 +225,76 @@ class FastCatClient {
     if (_session == null) throw StateError('Start or restore a session first');
   }
 
-  /// Public channel appearance; no visitor session is required.
-  Future<Map<String, dynamic>> configuration() => _json('/config');
+  static final _appearanceCache = <String, Map<String, dynamic>>{};
+  Future<Map<String, dynamic>>? _configurationRequest;
+  String get _appearanceKey => 'fastcat:appearance:${baseUrl.origin}:$appKey';
+  Map<String, dynamic>? get cachedConfiguration {
+    final record = _appearanceCache[_appearanceKey];
+    if (record == null ||
+        DateTime.now().millisecondsSinceEpoch < (record['saved'] as int) ||
+        DateTime.now().millisecondsSinceEpoch - (record['saved'] as int) >
+            86400000) return null;
+    return Map<String, dynamic>.from(record['data'] as Map);
+  }
+
+  Future<Map<String, dynamic>?> loadCachedConfiguration() async {
+    if (cachedConfiguration != null) return cachedConfiguration;
+    try {
+      final raw = await store?.read(_appearanceKey);
+      if (cachedConfiguration != null) return cachedConfiguration;
+      if (raw != null) {
+        final record = jsonDecode(raw);
+        if (record is Map &&
+            record['saved'] is int &&
+            record['data'] is Map &&
+            _validAppearance(
+                Map<String, dynamic>.from(record['data'] as Map))) {
+          _appearanceCache[_appearanceKey] = Map<String, dynamic>.from(record);
+        }
+      }
+    } catch (_) {}
+    return cachedConfiguration;
+  }
+
+  bool _validAppearance(Map<String, dynamic> data) {
+    final w = data['widget'];
+    if (w is! Map) return false;
+    return RegExp(r'^#[0-9a-fA-F]{6}$')
+            .hasMatch(w['themeColor']?.toString() ?? '') &&
+        (w['language'] == null ||
+            ['auto', 'zh-CN', 'en'].contains(w['language'])) &&
+        (w['theme'] == null ||
+            ['auto', 'light', 'dark'].contains(w['theme'])) &&
+        (w['showHandoffButton'] == null || w['showHandoffButton'] is bool) &&
+        ['welcomeMessage', 'welcomeMessageZh', 'welcomeMessageEn']
+            .every((key) => w[key] == null || w[key] is String);
+  }
+
+  /// Fresh public configuration; concurrent callers share the same request.
+  Future<Map<String, dynamic>> configuration() {
+    return _configurationRequest ??=
+        _fetchConfiguration().whenComplete(() => _configurationRequest = null);
+  }
+
+  Future<Map<String, dynamic>> _fetchConfiguration() async {
+    final data = await _json('/config');
+    if (!_validAppearance(data))
+      throw const FormatException('Invalid appearance configuration');
+    if (_validAppearance(data)) {
+      final record = <String, dynamic>{
+        'saved': DateTime.now().millisecondsSinceEpoch,
+        'data': data
+      };
+      if (_appearanceCache.length >= 32)
+        _appearanceCache.remove(_appearanceCache.keys.first);
+      _appearanceCache[_appearanceKey] = record;
+      if (store != null)
+        unawaited(store!
+            .write(_appearanceKey, jsonEncode(record))
+            .then<void>((_) {}, onError: (Object _) {}));
+    }
+    return data;
+  }
 
   Future<Map<String, dynamic>> _json(String path,
       {String method = 'GET',
@@ -167,8 +360,14 @@ class FastCatClient {
   }
 
   Future<void> reset() async {
+    await unregisterPushDevice();
+    await endAssistance();
     _session = null;
     _readCursor = 0;
+    _unreadSequences.clear();
+    _seenNotificationSequences.clear();
+    _notificationBaseline = false;
+    _publishUnread();
     if (!_readEvents.isClosed) _readEvents.add(0);
     await store?.delete(_storeKey);
   }
@@ -204,6 +403,7 @@ class FastCatClient {
     });
     if (conversationId == current && readSeq > _readCursor) {
       _readCursor = readSeq;
+      _publishUnread();
       if (!_readEvents.isClosed) _readEvents.add(readSeq);
     }
     return value;
@@ -261,6 +461,7 @@ class FastCatClient {
         try {
           final page = await messages(after: cursor);
           _setConnection(FastCatConnectionStatus.connected);
+          _observePage(page);
           yield page;
           cursor = page['nextCursor'] as int? ?? cursor;
           if (page['hasMore'] == true) continue;
@@ -279,10 +480,15 @@ class FastCatClient {
   }
 
   void close() {
+    if (_closed) return;
+    unawaited(setPushChatVisible(false).catchError((Object _) {}));
+    final ending = endAssistance();
     _closed = true;
     _setConnection(FastCatConnectionStatus.closed);
     unawaited(_connectionEvents.close());
     unawaited(_readEvents.close());
-    _http.close();
+    unawaited(_unreadEvents.close());
+    unawaited(_messageEvents.close());
+    unawaited(ending.whenComplete(_http.close));
   }
 }

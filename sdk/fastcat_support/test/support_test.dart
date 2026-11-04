@@ -22,6 +22,40 @@ class MemoryStore implements FastCatSessionStore {
 
 void main() {
   testWidgets(
+      'failed SDK entry never renders a default or explicit component title',
+      (tester) async {
+    for (final locale in [const Locale('zh', 'CN'), const Locale('en')]) {
+      final support = FastCatSupport(
+          baseUrl: Uri.parse('https://entry-error.example.com'),
+          appKey: 'entry-error',
+          store: MemoryStore(),
+          user: const FastCatUser(
+              id: 'test-user', email: 'entry@example.invalid'),
+          httpClient: MockClient((request) async =>
+              request.url.path.endsWith('/config')
+                  ? http.Response('{"widget":{"themeColor":"#123456"}}', 200)
+                  : http.Response('{"error":"offline"}', 503)));
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              appBar: AppBar(title: const Text('客户端标题')),
+              body: FastCatSupportView(
+                  support: support,
+                  showHeader: true,
+                  title: 'SDK 临时标题',
+                  locale: locale))));
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.text('SDK 临时标题'), findsNothing);
+      expect(find.text('Support'), findsNothing);
+      expect(find.text('在线客服'), findsNothing);
+      expect(find.text(locale.languageCode == 'en' ? 'Start chat' : '开始咨询'),
+          findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      support.close();
+    }
+  });
+
+  testWidgets(
       'embedded support retains host app bar during loading and email entry',
       (tester) async {
     final support = FastCatSupport(
@@ -33,7 +67,14 @@ void main() {
         home: Scaffold(
             appBar: AppBar(title: const Text('客户端标题')),
             body: FastCatSupportView(
-                support: support, locale: const Locale('zh', 'CN')))));
+                support: support,
+                showHeader: true,
+                title: 'SDK 临时标题',
+                locale: const Locale('zh', 'CN')))));
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.text('SDK 临时标题'), findsNothing);
+    expect(find.text('Support'), findsNothing);
+    expect(find.text('在线客服'), findsNothing);
     await tester.pumpAndSettle();
     expect(find.text('客户端标题'), findsOneWidget);
     expect(find.byType(AppBar), findsOneWidget);
@@ -83,7 +124,8 @@ void main() {
     await tester.tap(find.text('开始咨询'));
     await tester.pump();
     await tester.pumpAndSettle();
-    expect(find.text('客服中心'), findsOneWidget);
+    expect(find.text('客服中心'), findsNothing);
+    expect(find.byTooltip('声音'), findsOneWidget);
     expect(starts, 1);
     await tester.pumpWidget(const SizedBox());
     first.close();
@@ -94,7 +136,8 @@ void main() {
         store: store,
         httpClient: mock());
     await mount(second);
-    expect(find.text('客服中心'), findsOneWidget);
+    expect(find.text('客服中心'), findsNothing);
+    expect(find.byTooltip('声音'), findsOneWidget);
     expect(find.text('开始咨询'), findsNothing);
     expect(starts, 1);
     await tester.pumpWidget(const SizedBox());

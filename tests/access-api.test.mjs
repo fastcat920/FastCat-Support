@@ -56,11 +56,11 @@ test("visitor API supports SDK origin CORS while staff APIs remain same-origin; 
   assert.equal(channels.length, 2);
   const sdk = channels.find((c) => c.type === "sdk"),
     web = channels.find((c) => c.type === "web");
-  const endpoint = "/api/access/channels/" + sdk.id;
+  const endpoint = "/api/access/channels/" + web.id;
   assert.equal(
     (
       await call(endpoint, "PUT", {
-        ...sdk,
+        ...web,
         origins: ["https://app.example.com"],
         expectedRevision: 0,
       })
@@ -146,7 +146,7 @@ test("visitor API supports SDK origin CORS while staff APIs remain same-origin; 
   assert.equal(
     (
       await call(endpoint, "PUT", {
-        ...sdk,
+        ...web,
         enabled: false,
         origins: [],
         expectedRevision: 1,
@@ -244,7 +244,7 @@ test("new site instances publish appearance, retain sessions across key rotation
   const frame = await call("/widget?appKey=" + p.public_key);
   assert.match(
     frame.headers.get("content-security-policy"),
-    /img-src 'self' blob: https:/,
+    /img-src 'self' blob: data: https:/,
   );
   const oldKey = p.public_key;
   p = (

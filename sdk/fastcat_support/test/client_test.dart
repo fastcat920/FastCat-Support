@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:fastcat_support/fastcat_support.dart';
@@ -21,6 +22,118 @@ class MemoryStore implements FastCatSessionStore {
 }
 
 void main() {
+  test(
+      'push registration is conversation-authenticated and reset unbinds before clearing',
+      () async {
+    final requests = <http.Request>[];
+    final c = FastCatClient(
+        baseUrl: Uri.parse('https://push.example'),
+        appKey: 'app',
+        client: MockClient((r) async {
+          requests.add(r);
+          if (r.url.path.endsWith('/start'))
+            return http.Response(
+                jsonEncode({'id': 'conversation', 'token': 'visitor-secret'}),
+                201);
+          return http.Response(
+              jsonEncode({
+                'ok': true,
+                'configured': {'apns': false, 'fcm': false},
+                'unreadCount': 0
+              }),
+              200);
+        }));
+    await c.start(email: 'test@example.com');
+    await c.registerPushDevice(
+        deviceId: 'installation_uuid_001', token: 'a' * 64, provider: 'apns');
+    final registration = requests.firstWhere((r) => r.method == 'PUT');
+    expect(registration.headers['Authorization'], 'Bearer visitor-secret');
+    expect(jsonDecode(registration.body)['id'], 'conversation');
+    await c.setPushChatVisible(true);
+    expect(jsonDecode(requests.last.body)['foreground'], true);
+    await c.pushStatus();
+    expect(requests.last.url.queryParameters['id'], 'conversation');
+    await c.reset();
+    expect(
+        requests.any((r) =>
+            r.method == 'DELETE' && jsonDecode(r.body)['id'] == 'conversation'),
+        true);
+    expect(c.hasSession, false);
+    c.close();
+  });
+
+  test(
+      'configuration requests are shared and appearance is immediately reusable per origin and channel',
+      () async {
+    final pending = Completer<http.Response>();
+    var requests = 0;
+    final store = MemoryStore();
+    final c = FastCatClient(
+        baseUrl: Uri.parse('https://cache.example.com'),
+        appKey: 'warm',
+        store: store,
+        client: MockClient((_) {
+          requests++;
+          return pending.future;
+        }));
+    final first = c.configuration(), second = c.configuration();
+    await Future<void>.delayed(Duration.zero);
+    expect(requests, 1);
+    pending.complete(http.Response(
+        jsonEncode({
+          'widget': {'themeColor': '#102030', 'showHandoffButton': false}
+        }),
+        200));
+    await Future.wait([first, second]);
+    expect(c.cachedConfiguration!['widget']['themeColor'], '#102030');
+    final warm = FastCatClient(
+        baseUrl: Uri.parse('https://cache.example.com'), appKey: 'warm');
+    final other = FastCatClient(
+        baseUrl: Uri.parse('https://cache.example.com'), appKey: 'other');
+    expect(warm.cachedConfiguration!['widget']['showHandoffButton'], false);
+    expect(other.cachedConfiguration, isNull);
+    expect(
+        store.values.keys.any((key) => key.startsWith('fastcat:appearance:')),
+        isTrue);
+    c.close();
+    warm.close();
+    other.close();
+  });
+  test('persisted appearance ignores expired, corrupt and future-dated records',
+      () async {
+    final store = MemoryStore();
+    final c = FastCatClient(
+        baseUrl: Uri.parse('https://disk-cache.example.com'),
+        appKey: 'disk',
+        store: store);
+    const key = 'fastcat:appearance:https://disk-cache.example.com:disk';
+    store.values[key] = 'broken';
+    expect(await c.loadCachedConfiguration(), isNull);
+    store.values[key] = jsonEncode({
+      'saved': 0,
+      'data': {
+        'widget': {'themeColor': '#123456'}
+      }
+    });
+    expect(await c.loadCachedConfiguration(), isNull);
+    store.values[key] = jsonEncode({
+      'saved': DateTime.now().millisecondsSinceEpoch + 86400000,
+      'data': {
+        'widget': {'themeColor': '#123456'}
+      }
+    });
+    expect(await c.loadCachedConfiguration(), isNull);
+    store.values[key] = jsonEncode({
+      'saved': DateTime.now().millisecondsSinceEpoch,
+      'data': {
+        'widget': {'themeColor': '#654321'}
+      }
+    });
+    expect((await c.loadCachedConfiguration())!['widget']['themeColor'],
+        '#654321');
+    c.close();
+  });
+
   test('email and visitor profile use the authenticated session', () async {
     final requests = <http.Request>[];
     final client = FastCatClient(

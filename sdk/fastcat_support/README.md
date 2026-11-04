@@ -1,6 +1,6 @@
 # FastCat Support · Flutter / Dart SDK
 
-SDK 版本 0.16.1，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
+SDK 版本 0.28.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
 
 ## 安装与连接
 
@@ -71,7 +71,7 @@ await support.acknowledge(deliveredSeq: 12, readSeq: 10);
 
 `watch()` 每两秒按服务端游标增量拉取，分页立即续取，网络恢复后继续；订阅取消后停止拉取。不使用推送通知或后台常驻。`watch` 本身不标记已读，宿主需在用户可见后显式提交回执。聊天组件在前台、当前路由接收消息后提交已读。
 
-附件 API：`sendAttachment(bytes, filename: ..., clientId: ...)`、`downloadAttachment(id)`；单文件 8 MB，服务器检查文件类型。聊天组件可注入 `pickAttachment`（返回 `FastCatAttachment`）与 `onAttachment(filename, bytes)`（保存/预览）。选择器与文件保存由宿主提供，不请求额外平台权限。
+附件 API：`sendAttachment(bytes, filename: ..., clientId: ...)`、`downloadAttachment(id)`；单文件 8 MB，服务器检查文件类型。聊天组件可注入 `pickAttachment`（返回 `FastCatAttachment`）与 `onAttachment(filename, bytes)`（保存/预览）。选择器与文件保存由宿主提供，不请求额外平台权限。未传入 `pickAttachment` 时附件按钮禁用；回调返回 `null` 表示取消选择，返回的附件超过 8 MB 时会提示错误。
 
 ## 会话与重试边界
 
@@ -128,3 +128,75 @@ FastCatChat 与可独立使用的 FastCatMessageBody 支持 Markdown、rich_text
 首次 `start` 必须传邮箱，邮箱作为访客名称。`profile` 可传 `externalId`、`displayName`、`phone`、`company`、`jobTitle`、`source`、`timezone`、`platform`、`device`、`os`、`appVersion`、`browser`、`language`、`location`，以及 `custom` 自定义字段（字符串、数字或布尔值）。已建立会话时可调用 `await support.updateProfile(profile: {'device': 'Phone'})` 更新当前会话资料。
 
 邮箱及客户端资料属于访客提供的信息，不作为已验证身份，也不会按邮箱合并不同会话。旧版仅传姓名的 SDK 调用需更新为传入邮箱。
+
+
+## 0.18：内置 Flutter 聊天界面
+
+SDK 使用 Flutter 组件绘制聊天界面，不使用 WebView。客户端直接调用 `FastCatChat(client: client)`，无需自行绘制。附件选择和保存通过宿主回调接入。布局变更需要升级 SDK 并重新发布客户端。
+
+
+## 0.19：网页风格与消息通知
+
+保持 Flutter 原生组件。采用紧凑标题栏、客服头像和名称、气泡内时间与已读状态、圆角输入区及图标操作。中文/英文标题和联系人工按钮开关读取后台配置。
+
+客户端可订阅：
+```dart
+final unreadSubscription = client.unreadCountStream.listen((count) {
+  // 更新宿主角标
+});
+final messageSubscription = client.incomingMessageStream.listen((message) {
+  // 宿主自定义提示音；聊天页自带系统声音，可在标题栏关闭，避免重复播放
+});
+// 没有挂载聊天页或入口时，需保持一个 watch 订阅以接收消息：
+final monitor = client.watch().listen((page) {});
+// 退出账号时取消订阅并 close client。
+```
+
+初次同步历史不会触发新消息提示音，重复轮询消息按 seq 去重。未读数随已读游标更新；当前采用前台轮询，不提供 App 被系统挂起或关闭后的系统推送。系统声音受静音模式及平台行为影响。Flutter 与网页共用后台配置，但分别绘制，字体、系统控件和平台附件选择器存在差异，尚需真机视觉验收。
+
+
+## 0.20：与网页统一的原生 UI
+
+紧凑双行标题栏按会话状态显示接待信息，支持后台标题和人工入口开关；采用与网页相同的 SVG 图标、气泡内时间和回执、日期分隔、头像名称布局。AI 草稿与正式消息共用渲染；图片附件加载缩略图，下载通过宿主回调。表情面板在输入框附近弹出。文字发送状态显示在消息气泡内，重试保留请求标识。提示音采用网页同样的 740/990Hz 音调及包络，实际音量和系统静音行为仍由平台控制。
+
+已完成 Android 12 演示消息真机视觉检查及 Flutter 自动测试。字体仍使用平台字体；未承诺跨平台逐像素一致。图片下载、提示音及失败重试的真实网络联调不属于本次截图验证。
+
+会话窗口使用紧凑单行头部，显示实际接待状态和声音开关，不显示默认“客服服务”占位文字，不显示组件标题。欢迎语通过网页端配置 `welcomeMessageZh`、`welcomeMessageEn`，按窗口语言显示。
+
+外观配置按服务地址和 appKey 缓存 24 小时；窗口优先使用缓存，后台刷新最新配置。FastCatSupport 初始化时提前读取缓存和请求配置；直接使用 FastCatClient 时可在应用初始化后调用 configuration() 预热。首次没有缓存时显示中性加载占位，不绘制默认主题。已有 FastCatSessionStore 时自动持久化外观缓存。
+
+输入框支持 Enter 发送、Shift+Enter 换行，移动端键盘提供发送动作。发送接口确认后会保留消息，直到收到相同 clientId 的正式记录再替换；不会等待同步期间短暂隐藏消息。附件与表情按钮使用独立 36 像素点击区域，按输入区宽度采用 8–12 像素间距，并在文字与工具栏之间保留 8 像素留白；单行输入框最小高度为 90 像素，多行时自动增长。
+
+初始化、邮箱输入和错误重试状态同样不显示 SDK 组件标题；嵌入时保留宿主自己的标题栏，避免加载期间出现第二层 Support / 在线客服标题。
+
+## 诊断协助（0.21.0）
+
+使用 `FastCatSupport(diagnosticHandlers: {...})` 注册 basic/status/network/logs 只读回调，SDK 提供明确授权卡片及结果回传；未注册不会开放诊断。宿主需检查请求取消状态并在返回前脱敏。不支持静默诊断或修复操作。完整契约见项目 `docs/CLIENT_DIAGNOSTICS.md`。
+
+## 受控修复（0.22.0）
+
+`repairHandlers` 可注册 reconnect/restart_core/reapply_proxy/restore_settings。每次操作需用户单独确认，宿主必须实现持久去重及只读 recover 回调；SDK 不执行操作系统命令。代理修改要求 supportsRollback:true，快照与回滚由宿主实现。参见包内 `REPAIRS.md`。
+
+## 线路检测及切换验证（0.23.0）
+
+`diagnosticHandlers['routes']` 只读比较当前及少量备用线路，最多3条检测结果；`repairHandlers['switch_route']` 配合 `routeOptions` 和 `supportsRollback:true` 提供逐次确认的临时切换验证，完成后必须恢复原线路。结果额外上报 originalRouteRestored。详见 `REPAIRS.md`。
+
+## 分类授权（0.24.0）
+
+信息查询和操作类各授权一次，本次协助各自30分钟有效。范围内请求自动处理，可随时撤回；新增能力或备用线路需明确扩展授权。旧回调兼容，退出账号请结束协助并释放实例。完整规则见 `AUTHORIZATION.md`。
+
+## 紧凑授权界面（0.25.0）
+
+已授权状态只保留36像素状态栏；授权范围、到期时间及撤回操作收进“管理”。首次仅显示一张简短授权卡片，支持“查看范围”及“暂不授权”。任务进度和结果显示在聊天记录中，详细原因点击展开。原有30分钟分类授权和客户端回调契约保持一致。
+
+## 会话体验修复（0.26.0）
+
+查看历史时不再因轮询、思考内容更新或协助状态更新自动滚到底部；打开会话和发送消息时定位最新消息，用户手动滚动后停止图片布局跟随。思考气泡读取当前平台AI客服头像。选择表情在选区插入并恢复光标/焦点，键盘正常弹出。服务端AI上下文补充当前会话上报的身份及业务字段，敏感凭据和订阅链接除外。
+
+## 会话跟随与提示（0.28.0）
+
+收到客服新消息时显示最新消息；手动滚动记录后暂停跟随，重新打开或发送消息后恢复。未授权且无待确认请求时隐藏授权管理。错误提示随窗口中英文语言显示。
+
+## 用户端系统推送（0.28.0）
+
+新增 registerPushDevice、unregisterPushDevice、pushStatus、setPushChatVisible。宿主提供 APNs/FCM token，FastCatChat 自动上报前后台。详见项目 docs/USER-PUSH.md；系统权限、接收通知和点击跳转由宿主处理。

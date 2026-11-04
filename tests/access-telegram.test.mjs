@@ -152,10 +152,11 @@ test("Telegram is a staff-only handoff topic bridge: context privacy, text, atta
       { id: "c", visitor_id: "v" },
       { body: "较早消息" },
     );
-    insertStaffMessage(x.db, { id: "admin", role: "admin" }, "c", {
-      body: "内部备注",
-      internal: true,
-    });
+    x.db
+      .prepare(
+        "INSERT INTO messages(id,conversation_id,role,body,created) VALUES('legacy_note','c','note','内部备注',?)",
+      )
+      .run(new Date().toISOString());
     insertVisitorMessage(
       x.db,
       { id: "c", visitor_id: "v" },
@@ -305,7 +306,7 @@ test("Telegram closed conversations and revoked staff cannot post replies", asyn
 test("Platform keys, origin policy, revision conflict and disabling a channel are enforced", async () => {
   const x = setup();
   try {
-    const channel = x.channels.list().find((c) => c.type === "sdk");
+    const channel = x.channels.list().find((c) => c.type === "web");
     let result;
     const req = { method: "PUT", headers: { host: "localhost" } };
     await x.channels.handle({

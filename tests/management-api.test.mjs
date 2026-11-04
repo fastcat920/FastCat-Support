@@ -287,7 +287,7 @@ test("assignment scopes reads, replies, search, visitors, AI and bulk actions", 
   );
 });
 test("priority, filters, pagination, atomic bulk, CSV and audit are usable", async () => {
-  assert.equal((await call("/tags", "GET")).status, 404);
+  assert.equal((await call("/tags", "GET")).status, 200);
   const a = await visitor("=SUM(1+1)"),
     b = await visitor("普通访客");
   assert.equal(
@@ -336,15 +336,15 @@ test("priority, filters, pagination, atomic bulk, CSV and audit are usable", asy
   assert.equal((await call("/audit", "GET", undefined, agentA)).status, 403);
 });
 test("quick replies are managed by admins and read by agents; idempotent replies claim and record author", async () => {
+  await call("/quick-reply-categories", "POST", { name: "接待" });
   const reply = await call("/quick-replies", "POST", {
-    title: "欢迎",
     body: "您好 {{visitor.name}}，我是 {{agent.name}}。",
     category: "接待",
   });
   assert.equal(reply.status, 201);
   assert.equal(
     (await call("/quick-replies", "GET", undefined, agentA)).data[0].title,
-    "欢迎",
+    "您好 {{visitor.name}}，我是 {{agent.name}}。",
   );
   assert.equal(
     (
@@ -463,4 +463,72 @@ test("member management saves status and workload capacity atomically with admin
     403,
   );
   await call(p, "PATCH", { availability: "available", capacity: 10 });
+});
+
+test("quick reply categories are independent, validated, renamed together and protected from deletion while used", async () => {
+  let r = await call("/quick-reply-categories", "POST", { name: "空分类" });
+  assert.equal(r.status, 201);
+  r = await call("/quick-reply-categories", "GET", undefined, agentB);
+  assert.equal(r.status, 200);
+  assert.ok(r.data.some((c) => c.name === "空分类"));
+  assert.equal(
+    (await call("/quick-reply-categories", "POST", { name: "空分类" })).status,
+    409,
+  );
+  assert.equal(
+    (await call("/quick-reply-categories", "POST", { name: "禁止" }, agentB))
+      .status,
+    403,
+  );
+  assert.equal(
+    (await call("/quick-replies", "POST", { body: "内容", category: "不存在" }))
+      .status,
+    400,
+  );
+  r = await call("/quick-replies", "POST", {
+    body: "无需标题的回复内容",
+    category: "空分类",
+  });
+  assert.equal(r.status, 201);
+  const id = r.data.id;
+  assert.equal(
+    (
+      await call(
+        "/quick-reply-categories/" + encodeURIComponent("空分类"),
+        "DELETE",
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await call(
+        "/quick-reply-categories/" + encodeURIComponent("空分类"),
+        "PATCH",
+        { name: "新分类" },
+      )
+    ).status,
+    200,
+  );
+  let rows = (await call("/quick-replies")).data;
+  assert.equal(rows.find((r) => r.id === id).category, "新分类");
+  assert.equal(
+    (
+      await call("/quick-replies/" + id, "PATCH", {
+        body: "修改内容",
+        category: "新分类",
+      })
+    ).status,
+    200,
+  );
+  await call("/quick-replies/" + id, "DELETE");
+  assert.equal(
+    (
+      await call(
+        "/quick-reply-categories/" + encodeURIComponent("新分类"),
+        "DELETE",
+      )
+    ).status,
+    200,
+  );
 });

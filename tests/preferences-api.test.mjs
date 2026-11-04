@@ -263,3 +263,62 @@ test("language and accent preferences persist with validation and isolation", as
       400,
     );
 });
+
+test("global unread total counts messages, respects access, and drops after read receipts", async () => {
+  const adminBefore = (await call("/notifications")).data.unreadCount;
+  const staffBefore = (
+    await call("/notifications", "GET", undefined, staffCookie)
+  ).data.unreadCount;
+  const v = (
+    await call("/widget/start", "POST", { email: "badge@example.test" })
+  ).data;
+  for (const [body, clientId] of [
+    ["badge one", "badge_message_001"],
+    ["badge two", "badge_message_002"],
+  ])
+    assert.equal(
+      (
+        await call(
+          "/widget/messages",
+          "POST",
+          { id: v.id, body, clientId },
+          "",
+          { Authorization: "Bearer " + v.token },
+        )
+      ).status,
+      201,
+    );
+  assert.equal(
+    (await call("/notifications")).data.unreadCount,
+    adminBefore + 2,
+  );
+  assert.equal(
+    (await call("/notifications", "GET", undefined, staffCookie)).data
+      .unreadCount,
+    staffBefore + 2,
+  );
+  const detail = (await call("/conversations/" + v.id)).data;
+  const assigned = await call("/conversations/" + v.id, "PATCH", {
+    assignee: adminId,
+    expectedRevision: detail.conversation.revision,
+  });
+  assert.equal(assigned.status, 200);
+  assert.equal(
+    (await call("/notifications", "GET", undefined, staffCookie)).data
+      .unreadCount,
+    staffBefore,
+  );
+  const feed = (await call("/notifications?after=0")).data;
+  assert.equal(feed.unreadCount, adminBefore + 2);
+  const seq = Math.max(...detail.messages.map((m) => m.seq));
+  assert.equal(
+    (
+      await call("/conversations/" + v.id + "/receipts", "POST", {
+        deliveredSeq: seq,
+        readSeq: seq,
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await call("/notifications")).data.unreadCount, adminBefore);
+});

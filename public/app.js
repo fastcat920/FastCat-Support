@@ -1,7 +1,8 @@
+import { assistantNavigation } from "./assistant-navigation.js";
 import { randomId } from "./ids.js";
 import { createExtensionsUI } from "./extensions.js";
 import { createNotifications } from "./notifications.js";
-import { createSettingsUI } from "./settings.js";
+import { createSettingsUI } from "./settings.js?v=avatar-fix-2";
 import { createAgentEditor } from "./agent-editor.js";
 import { createAccessUI } from "./access.js";
 import { createProviderUI } from "./providers.js";
@@ -156,12 +157,25 @@ function empty(symbol, title, desc, action = "") {
 function field(name, label, placeholder = "", type = "text", value = "") {
   return `<div class="field"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="${type}" placeholder="${E(placeholder)}" value="${E(value)}" required></div>`;
 }
+let inboxUnreadTotal = 0;
+function updateInboxUnread(value) {
+  inboxUnreadTotal = Math.max(0, Number(value) || 0);
+
+  const badge = document.querySelector("#inbox-unread-badge");
+  if (!badge) return;
+  const count = inboxUnreadTotal;
+  badge.hidden = count === 0;
+  badge.textContent = count > 99 ? "99+" : String(count);
+  badge.title = `${count} 条未读消息`;
+  badge.setAttribute("aria-label", badge.title);
+}
 const notifications = createNotifications({
   api,
   getMe: () => me,
   getActive: () => (page === "inbox" ? inboxUI.activeId : null),
   openConversation: (id) => inboxUI.open(id),
   toast,
+  onUnread: updateInboxUnread,
 });
 const settingsUI = createSettingsUI({
   api,
@@ -308,7 +322,7 @@ let agentMenuOpen = false;
 const agentChildren = ["workflow", "tool", "extensions"];
 function navigationMarkup() {
   const button = (key, label = titles[key]) =>
-    `<button data-page="${key}" aria-label="${label}"><span class="icon">${icons[key] || icons.tool}</span><span class="nav-text">${label}</span></button>`;
+    `<button data-page="${key}" aria-label="${label}"><span class="icon">${icons[key] || icons.tool}</span><span class="nav-text">${label}</span>${key === "inbox" ? '<span id="inbox-unread-badge" class="nav-unread-badge" hidden role="status" aria-live="polite"></span>' : ""}</button>`;
   return Object.keys(titles)
     .filter(
       (k) =>
@@ -325,11 +339,7 @@ function navigationMarkup() {
       const heading = label
         ? `<div class="nav-group-label">${label}</div>`
         : "";
-      if (k === "agent")
-        return (
-          heading +
-          `<div class="nav-parent"><div class="nav-parent-row">${button(k)}<button id="toggle-agent-menu" class="nav-disclosure" aria-label="展开智能体子菜单" aria-expanded="false" aria-controls="agent-submenu">⌄</button></div><div id="agent-submenu" class="nav-submenu" hidden>${agentChildren.map((k) => button(k)).join("")}</div></div>`
-        );
+      if (k === "agent") return heading + button(k, "AI助手");
       return heading + button(k);
     })
     .join("");
@@ -347,6 +357,7 @@ function updateAgentMenu() {
 }
 function shell() {
   app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="mark">F</span><span class="brand-text">FastCat<span style="font-weight:400"> Support</span></span></div><div class="nav-label">工作空间</div><nav class="nav">${navigationMarkup()}</nav><div class="sidebar-foot"><div class="row"><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div><div class="small">${E(me.name)}<br>${me.role === "admin" ? "管理员" : "客服"}</div></div><button id="logout" class="quiet small">退出登录</button></div></aside><main><header class="topbar"><strong id="breadcrumb"></strong><div class="right"><button id="global-search-button" class="search-launcher" aria-label="搜索与快速跳转"><span>搜索工作空间</span><kbd>⌘ K</kbd></button><button id="theme-toggle" class="quiet" aria-label="切换主题" title="切换明暗主题">◐</button><select id="own-availability" class="presence-select" aria-label="我的接待状态"><option value="available">在线</option><option value="away">忙碌</option><option value="offline">离线</option></select><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div></div></header><div id="view"></div></main></div>`;
+  updateInboxUnread(inboxUnreadTotal);
   app
     .querySelectorAll("[data-page]")
     .forEach((b) => (b.onclick = () => navigate(b.dataset.page)));
@@ -431,7 +442,8 @@ async function render() {
   document
     .querySelector('nav [aria-current="page"]')
     ?.scrollIntoView({ block: "nearest" });
-  document.querySelector("#breadcrumb").textContent = titles[page];
+  document.querySelector("#breadcrumb").textContent =
+    page === "agent" || agentChildren.includes(page) ? "AI助手" : titles[page];
   const v = document.querySelector("#view");
   try {
     if (page === "channel") return await accessUI.render();
@@ -497,7 +509,7 @@ async function render() {
   }
 }
 function heading(t, d, btn = "") {
-  return `<div class="page-heading"><div><h1>${t}</h1><p>${d}</p></div>${btn}</div>`;
+  return btn ? `<div class="page-actions">${btn}</div>` : "";
 }
 function statusName(s) {
   return { open: "待处理", pending: "跟进中", closed: "已结束" }[s] || s;
@@ -524,7 +536,7 @@ async function resourcePage() {
   }
   const [title, desc, button] = details[kind],
     v = document.querySelector("#view");
-  v.innerHTML = `<div class="content">${heading(title, desc, `<button class="primary" id="create">＋ ${button}</button>`)}${["workflow", "tool", "model"].includes(kind) ? '<div class="notice">模型目录用于记录服务与模型标识。实际模型连接和密钥由服务器环境变量配置。</div>' : kind === "agent" ? '<div class="notice">支持服务指令、多知识库、授权工具自动调用和可选角色协作。可选择模型供应商或使用工作空间默认连接；调试结果由人工确认发送。</div>' : ""}${kind === "channel" ? `<section class="panel" style="margin-bottom:24px"><div class="panel-head"><div><h2>网站客服组件</h2><p class="small">可用 · 访客发送消息，客服工作台实时接收</p></div><button id="widget-preview">打开预览 ↗</button></div><label>嵌入代码（同源网站）</label><div class="code">${E('<iframe src="' + location.origin + '/widget" title="在线客服" width="430" height="730"></iframe>')}</div><p class="small">其他域名嵌入需要单独配置访问策略。外部渠道仅保存配置，尚未接入。</p></section>` : ""}<div class="toolbar"><input id="search" aria-label="搜索" placeholder="搜索${titles[kind]}…" value="${E(query)}"><div class="row">${kind === "knowledge" ? '<button id="knowledge-search">检索测试</button><button id="import-knowledge">导入文本</button>' : ""}<span class="small">共 ${resources.length} 项</span></div></div><div id="resource-list"></div></div>`;
+  v.innerHTML = `<div class="content">${assistantNavigation(kind)}${heading(title, desc, `<button class="primary" id="create">＋ ${button}</button>`)}${kind === "channel" ? `<section class="panel" style="margin-bottom:24px"><div class="panel-head"><div><h2>网站客服组件</h2><p class="small">可用 · 访客发送消息，客服工作台实时接收</p></div><button id="widget-preview">打开预览 ↗</button></div><label>嵌入代码（同源网站）</label><div class="code">${E('<iframe src="' + location.origin + '/widget" title="在线客服" width="430" height="730"></iframe>')}</div><p class="small">其他域名嵌入需要单独配置访问策略。外部渠道仅保存配置，尚未接入。</p></section>` : ""}<div class="toolbar"><input id="search" aria-label="搜索" placeholder="搜索${titles[kind]}…" value="${E(query)}"><div class="row">${kind === "knowledge" ? '<button id="knowledge-search">检索测试</button><button id="import-knowledge">导入文本</button>' : ""}<span class="small">共 ${resources.length} 项</span></div></div><div id="resource-list"></div></div>`;
   document.querySelector("#create").onclick = () => resourceModal(kind);
   document
     .querySelector("#widget-preview")
@@ -573,7 +585,7 @@ function resourceList(kind) {
     return tags.map((tag) => `<span>${E(tag)}</span>`).join("");
   };
   document.querySelector("#resource-list").innerHTML = rows.length
-    ? `<div class="grid resource-grid">${rows.map((r) => `<article class="card resource-card"><div class="row resource-card-head"><div class="avatar">${icons[kind]}</div><span class="badge">${kind === "knowledge" ? "知识条目" : kind === "agent" ? "智能体" : kind === "model" ? "模型" : "已保存"}</span>${kind !== "agent" ? `<button class="quiet danger" data-delete="${r.id}" style="margin-left:auto" aria-label="删除 ${E(r.name)}">×</button>` : ""}</div><h3>${E(r.name)}</h3><p>${E(r.description.slice(0, 150) || "暂无描述")}</p>${kind === "agent" ? `<div class="agent-card-summary"><span>${E(r.config?.profession || "AI 助手")}</span><span>${E(r.config?.model || "工作空间默认模型")}</span><span>工具 ${(r.config?.toolBindings || []).length} · 工作流 ${(r.config?.workflowIds || []).length}</span>${resourceTags(r.config)}</div>` : ""}<div class="small resource-card-meta">${new Date(r.created).toLocaleDateString("zh-CN")} 创建${kind === "agent" && r.config?.collaboration?.enabled ? " · 已启用协作" : ""}</div><div class="row resource-card-actions ${kind === "agent" ? "agent-card-actions" : ""}"><button data-view="${r.id}">查看详情</button><button data-edit="${r.id}">编辑</button>${kind === "agent" ? `<button data-copy-agent="${r.id}">复制</button><button data-debug="${r.id}" class="primary">调试</button><button class="quiet danger" data-delete="${r.id}" aria-label="删除 ${E(r.name)}">删除</button>` : ""}</div></article>`).join("")}</div>`
+    ? `<div class="grid resource-grid">${rows.map((r) => `<article class="card resource-card ${kind === "agent" ? "agent-card" : ""}"><div class="row resource-card-head"><div class="avatar">${kind === "agent" && r.config?.avatar ? `<img src="${E(r.config.avatar)}" alt="智能体头像">` : icons[kind]}</div><span class="badge">${kind === "knowledge" ? "知识条目" : kind === "agent" ? "智能体" : kind === "model" ? "模型" : "已保存"}</span>${kind !== "agent" ? `<button class="quiet danger" data-delete="${r.id}" style="margin-left:auto" aria-label="删除 ${E(r.name)}">×</button>` : ""}</div><h3>${E(r.name)}</h3><p>${E(r.description.slice(0, 150) || "暂无描述")}</p>${kind === "agent" ? `<div class="agent-card-summary"><span>${E(r.config?.profession || "AI 助手")}</span><span>${E(r.config?.model || "工作空间默认模型")}</span><span>工具 ${(r.config?.toolBindings || []).length} · 工作流 ${(r.config?.workflowIds || []).length}</span>${resourceTags(r.config)}</div>` : ""}<div class="small resource-card-meta">${new Date(r.created).toLocaleDateString("zh-CN")} 创建${kind === "agent" && r.config?.collaboration?.enabled ? " · 已启用协作" : ""}</div><div class="row resource-card-actions ${kind === "agent" ? "agent-card-actions" : ""}">${kind !== "agent" ? `<button data-view="${r.id}">查看详情</button>` : ""}<button data-edit="${r.id}">编辑</button>${kind === "agent" ? `<button data-copy-agent="${r.id}">复制</button><button data-debug="${r.id}" class="primary">调试</button><button class="agent-delete" data-delete="${r.id}" aria-label="删除 ${E(r.name)}">删除</button>` : ""}</div></article>`).join("")}</div>`
     : empty(
         icons[kind],
         query ? "没有匹配结果" : `还没有${titles[kind]}`,

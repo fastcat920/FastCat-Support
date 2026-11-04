@@ -146,7 +146,7 @@
     frame.style.display = frame.hidden ? "none" : "block";
     error.hidden = !opened || !unavailable;
     error.style.display = error.hidden ? "none" : "block";
-    frame.contentWindow?.postMessage(h, base.origin);
+    frame.contentWindow?.postMessage({ ...h, opened }, base.origin);
     const color = config.themeColor;
     if (/^#[0-9a-f]{6}$/i.test(color || "")) {
       const rgb = [1, 3, 5]
@@ -161,6 +161,49 @@
     button.setAttribute("aria-expanded", String(opened));
     drawIcon();
   };
+  const appearanceKey = `fc_embed_appearance:v1:${base.origin}:${key}`;
+  const validConfig = (data) =>
+    data?.widget &&
+    /^#[0-9a-f]{6}$/i.test(data.widget.themeColor || "") &&
+    (data.widget.position == null ||
+      ["bottom-right", "bottom-left", "top-right", "top-left"].includes(
+        data.widget.position,
+      ));
+  const applyConfig = (data) => {
+    config = data.widget || {};
+    unavailable = false;
+    const position = config.position || "bottom-right",
+      top = position.startsWith("top"),
+      left = position.endsWith("left");
+    for (const [name, value] of Object.entries({
+      right: left ? "auto" : "20px",
+      left: left ? "20px" : "auto",
+      top: top ? "20px" : "auto",
+      bottom: top ? "auto" : "20px",
+    }))
+      box.style.setProperty(name, value, "important");
+    for (const element of [frame, error]) {
+      element.style.top = top ? "68px" : "auto";
+      element.style.bottom = top ? "auto" : "68px";
+      element.style.left = left ? "0" : "auto";
+      element.style.right = left ? "auto" : "0";
+    }
+  };
+  let cached = null;
+  try {
+    const record = JSON.parse(localStorage.getItem(appearanceKey));
+    if (
+      record &&
+      Date.now() >= record.saved &&
+      Date.now() - record.saved < 86400000 &&
+      validConfig(record.data)
+    )
+      cached = record.data;
+  } catch {}
+  if (cached) {
+    applyConfig(cached);
+    box.style.visibility = "visible";
+  }
   const configure = async () => {
     if (loading) return;
     loading = true;
@@ -172,28 +215,25 @@
         new URL("/api/widget/config?appKey=" + encodeURIComponent(key), base),
         { credentials: "omit", signal: controller.signal },
       );
-      if (!response.ok) throw Error("configuration unavailable");
-      const data = await response.json();
-      config = data.widget || {};
-      unavailable = false;
-      const position = config.position || "bottom-right",
-        top = position.startsWith("top"),
-        left = position.endsWith("left");
-      for (const [name, value] of Object.entries({
-        right: left ? "auto" : "20px",
-        left: left ? "20px" : "auto",
-        top: top ? "20px" : "auto",
-        bottom: top ? "auto" : "20px",
-      }))
-        box.style.setProperty(name, value, "important");
-      for (const element of [frame, error]) {
-        element.style.top = top ? "68px" : "auto";
-        element.style.bottom = top ? "auto" : "68px";
-        element.style.left = left ? "0" : "auto";
-        element.style.right = left ? "auto" : "0";
+      if (!response.ok) {
+        cached = null;
+        try {
+          localStorage.removeItem(appearanceKey);
+        } catch {}
+        throw Error("configuration unavailable");
       }
+      const data = await response.json();
+      if (!validConfig(data)) throw Error("Invalid configuration");
+      cached = data;
+      applyConfig(data);
+      try {
+        localStorage.setItem(
+          appearanceKey,
+          JSON.stringify({ saved: Date.now(), data }),
+        );
+      } catch {}
     } catch {
-      unavailable = true;
+      unavailable = !cached;
     } finally {
       clearTimeout(timeout);
       loading = false;
@@ -228,6 +268,7 @@
   button.onclick = () => {
     opened = !opened;
     sync();
+    if (opened) configure();
   };
   retry.onclick = configure;
   const mount = () => {

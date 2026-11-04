@@ -1,3 +1,4 @@
+import { assistantNavigation } from "./assistant-navigation.js";
 import { createRetrievalUI } from "./retrieval.js";
 import { createKnowledgeJobsUI } from "./knowledge-jobs.js";
 import {
@@ -81,7 +82,7 @@ export function createFeatureUI({
     return `<div class="field"><label for="${name}">${label}</label><input id="${name}" name="${name}" value="${E(value)}" placeholder="${E(placeholder)}" ${required ? "required" : ""}></div>`;
   }
   const heading = (title, desc, action) =>
-    `<div class="page-heading"><div><h1>${title}</h1><p>${desc}</p></div>${action}</div>`;
+    action ? `<div class="page-actions">${action}</div>` : "";
   const noData = (name, desc) =>
     `<div class="empty"><div class="empty-symbol">⊞</div><strong>${name}</strong><p>${desc}</p></div>`;
   function removeDialog(item, onDone) {
@@ -137,7 +138,7 @@ export function createFeatureUI({
       if (location.hash !== hash) history.pushState(null, "", hash);
     };
     document.querySelector("#view").innerHTML =
-      `<div class="content feature-content">${heading("知识库", "整理业务知识，让每次回答有据可依。", '<button class="primary" id="new-document">＋ 添加知识</button>')}<div class="knowledge-layout"><aside class="collection-panel"><div class="panel-head"><span class="section-label">知识库</span><button class="quiet" id="new-collection" aria-label="创建知识库">＋</button></div>${collections.map((c) => `<button class="collection-item ${c.id === state.collection ? "active" : ""}" data-collection="${c.id}"><span class="icon">▧</span><span>${E(c.name)}</span><span class="count">${c.documentCount}</span></button>`).join("")}<div class="collection-help small">知识分块后自动建立检索索引。可在智能体中绑定指定知识库。</div></aside><section class="panel knowledge-main"><div class="panel-head"><div><h2>${E(selected.name)}</h2><p class="small">${E(selected.description || "")} · ${selected.chunkCount} 个分块</p></div><div class="row"><button id="retrieval-test">检索测试</button>${isAdmin() ? '<button id="retrieval-config">检索配置</button><button id="embedding-jobs">向量索引</button><button id="website-sources">网站采集与同步</button>' : ""}${state.collection !== "default" ? '<button class="quiet danger" id="delete-collection">删除知识库</button>' : ""}</div></div><div class="toolbar"><input id="knowledge-filter" aria-label="搜索知识" placeholder="搜索知识名称或说明…" value="${E(state.query)}"><span class="small">${selected.documentCount} 个知识来源</span></div><div id="knowledge-table"></div></section></div></div>`;
+      `<div class="content feature-content"><div class="knowledge-layout"><aside class="collection-panel"><div class="panel-head"><span class="section-label">知识库</span><button class="quiet" id="new-collection" aria-label="创建知识库">＋</button></div>${collections.map((c) => `<button class="collection-item ${c.id === state.collection ? "active" : ""}" data-collection="${c.id}"><span class="icon">▧</span><span>${E(c.name)}</span><span class="count">${c.documentCount}</span></button>`).join("")}</aside><section class="panel knowledge-main"><div class="knowledge-primary-action"><button class="primary" id="new-document">＋ 添加知识</button></div><div class="panel-head"><div><h2>${E(selected.name)}</h2><p class="small">${E(selected.description || "")} · ${selected.chunkCount} 个分块</p></div><div class="row"><button id="retrieval-test">检索测试</button>${isAdmin() ? '<button id="retrieval-config">检索配置</button><button id="embedding-jobs">向量索引</button><button id="website-sources">网站采集与同步</button>' : ""}${state.collection !== "default" ? '<button class="quiet danger" id="delete-collection">删除知识库</button>' : ""}</div></div><div class="toolbar"><input id="knowledge-filter" aria-label="搜索知识" placeholder="搜索知识名称或说明…" value="${E(state.query)}"><span class="small">${selected.documentCount} 个知识来源</span></div><div id="knowledge-table"></div></section></div></div>`;
     document.querySelector("#retrieval-config")?.addEventListener(
       "click",
       safe(() => retrievalUI.configure(selected)),
@@ -557,7 +558,7 @@ export function createFeatureUI({
   });
   function workflowPage(rows) {
     document.querySelector("#view").innerHTML =
-      `<div class="content feature-content">${heading("工作流", "通过节点与连接编排客服处理流程。", '<button class="primary" id="new-workflow">＋ 创建工作流</button>')}<div class="toolbar"><span class="small">${rows.length} 个工作流 · 支持知识、条件、模型与工具节点</span></div><div class="grid">${rows
+      `<div class="content feature-content">${assistantNavigation("workflow")}${heading("工作流", "通过节点与连接编排客服处理流程。", '<button class="primary" id="new-workflow">＋ 创建工作流</button>')}<div class="toolbar"><span class="small">${rows.length} 个工作流 · 支持知识、条件、模型与工具节点</span></div><div class="grid">${rows
         .map(
           (r) =>
             `<article class="card workflow-card"><div class="row"><div class="feature-icon violet">⌘</div><span class="badge neutral">${r.config.definition?.nodes?.length || 0} 个节点</span><button class="quiet danger" data-delete="${r.id}" aria-label="删除 ${E(r.name)}" style="margin-left:auto">×</button></div><h3>${E(r.name)}</h3><p>${E(r.description || "暂无说明")}</p><div class="workflow-mini">${(
@@ -1261,7 +1262,7 @@ export function createFeatureUI({
   }
   function toolPage(rows) {
     document.querySelector("#view").innerHTML =
-      `<div class="content feature-content">${heading("工具集成", "连接 MCP 服务或 OpenAPI 接口，为客服拓展业务能力。", '<button class="primary" id="new-tool">＋ 添加工具</button>')}<div class="toolbar"><span class="small">${rows.length} 个工具服务</span><span class="small">支持工具发现、参数表单与调用测试</span></div><div class="grid">${rows.map((r) => `<article class="card tool-card"><div class="row"><div class="feature-icon blue">⊞</div><span class="badge neutral">${r.config.type === "openapi" ? "OpenAPI" : "MCP · HTTP"}</span><button class="quiet danger" data-delete="${r.id}" style="margin-left:auto" aria-label="删除 ${E(r.name)}">×</button></div><h3>${E(r.name)}</h3><p>${E(r.description || "暂无说明")}</p><div class="small endpoint">${E(r.config.endpoint || "尚未设置地址")}</div><div class="card-actions"><button data-edit-tool="${r.id}">配置</button><button class="primary" data-discover="${r.id}">连接并发现工具</button></div></article>`).join("")}</div>${rows.length ? "" : noData("连接第一个工具服务", "添加服务地址，发现业务工具并测试调用。")}</div>`;
+      `<div class="content feature-content">${assistantNavigation("tool")}${heading("工具集成", "连接 MCP 服务或 OpenAPI 接口，为客服拓展业务能力。", '<button class="primary" id="new-tool">＋ 添加工具</button>')}<div class="toolbar"><span class="small">${rows.length} 个工具服务</span><span class="small">支持工具发现、参数表单与调用测试</span></div><div class="grid">${rows.map((r) => `<article class="card tool-card"><div class="row"><div class="feature-icon blue">⊞</div><span class="badge neutral">${r.config.type === "openapi" ? "OpenAPI" : "MCP · HTTP"}</span><button class="quiet danger" data-delete="${r.id}" style="margin-left:auto" aria-label="删除 ${E(r.name)}">×</button></div><h3>${E(r.name)}</h3><p>${E(r.description || "暂无说明")}</p><div class="small endpoint">${E(r.config.endpoint || "尚未设置地址")}</div><div class="card-actions"><button data-edit-tool="${r.id}">配置</button><button class="primary" data-discover="${r.id}">连接并发现工具</button></div></article>`).join("")}</div>${rows.length ? "" : noData("连接第一个工具服务", "添加服务地址，发现业务工具并测试调用。")}</div>`;
     document.querySelector("#new-tool").onclick = () => toolDialog();
     document
       .querySelectorAll("[data-edit-tool]")

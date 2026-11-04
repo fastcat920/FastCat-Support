@@ -1,5 +1,7 @@
-const CACHE = "fastcat-shell-v025-sdk016";
+const CACHE = "fastcat-shell-v029-reply-categories-1";
 const FILES = [
+  "/assistance.js",
+  "/configuration-cache.js",
   "/",
   "/widget",
   "/widget.html",
@@ -11,6 +13,7 @@ const FILES = [
   "/message-status.js",
   "/message-days.js",
   "/app.js",
+  "/assistant-navigation.js",
   "/ids.js",
   "/i18n.js",
   "/appearance.js",

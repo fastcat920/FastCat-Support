@@ -15,5 +15,8 @@ ThemeData supportTheme(ThemeData host, Color primary) {
       primaryColor: primary,
       colorScheme:
           ColorScheme.fromSeed(seedColor: primary, brightness: host.brightness)
-              .copyWith(primary: primary, onPrimary: onPrimary));
+              .copyWith(
+                  primary: primary,
+                  onPrimary: onPrimary,
+                  surface: host.colorScheme.surface));
 }

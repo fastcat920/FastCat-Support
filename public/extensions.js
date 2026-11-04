@@ -1,3 +1,4 @@
+import { assistantNavigation } from "./assistant-navigation.js";
 export function createExtensionsUI({ api, E, modal, toast }) {
   let tab = "skills";
   const safe = (fn) => async () => {
@@ -9,7 +10,7 @@ export function createExtensionsUI({ api, E, modal, toast }) {
   };
   async function render() {
     const root = document.querySelector("#view");
-    root.innerHTML = `<div class="content"><div class="page-heading"><div><h1>技能与设备</h1><p>管理智能体可读取的专业知识，以及显式绑定的设备。</p></div></div><div class="tabs"><button data-tab="skills">Skills</button><button data-tab="devices">设备</button></div><section class="panel" id="extensions-content"></section></div>`;
+    root.innerHTML = `<div class="content">${assistantNavigation("extensions")}<div class="tabs"><button data-tab="skills">Skills</button><button data-tab="devices">设备</button></div><section class="panel" id="extensions-content"></section></div>`;
     root.querySelectorAll("[data-tab]").forEach((b) => {
       b.classList.toggle("active", b.dataset.tab === tab);
       b.onclick = safe(async () => {

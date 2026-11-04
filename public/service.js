@@ -11,7 +11,7 @@ export function createServiceUI({ api, E, modal, toast, isActive }) {
   const field = (id, label, value = "", type = "text", required = true) =>
     `<div class="field"><label for="${id}">${label}</label><input id="${id}" name="${id}" type="${type}" value="${E(value)}" ${required ? "required" : ""}></div>`;
   const heading = (title, description, button) =>
-    `<div class="page-heading"><div><h1>${title}</h1><p>${description}</p></div>${button}</div>`;
+    button ? `<div class="page-actions">${button}</div>` : "";
   async function render(page) {
     const revision = ++epoch;
     if (page !== "team-hours") return;

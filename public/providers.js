@@ -35,7 +35,7 @@ export function createProviderUI({ api, E, modal, toast }) {
   let view = "providers";
   async function render() {
     const root = document.querySelector("#view");
-    root.innerHTML = `<div class="content feature-content"><div class="page-heading"><div><h1>模型服务</h1><p>配置模型连接，选择对话与 Embedding 模型。</p></div>${view === "providers" ? '<button class="primary" id="new-provider">＋ 添加模型服务</button>' : ""}</div><div class="tabs"><button data-model-view="providers">模型配置</button><button data-model-view="records">调用记录</button></div>${view !== "providers" ? '<div class="management-tabs"><button data-record-view="usage">模型调用</button><button data-record-view="collaboration">智能体协作</button><button data-record-view="tool-calls">工具执行</button></div>' : ""}<div id="model-content"></div></div>`;
+    root.innerHTML = `<div class="content feature-content"><div class="page-actions">${view === "providers" ? '<button class="primary" id="new-provider">＋ 添加模型服务</button>' : ""}</div><div class="tabs"><button data-model-view="providers">模型配置</button><button data-model-view="records">调用记录</button></div>${view !== "providers" ? '<div class="management-tabs"><button data-record-view="usage">模型调用</button><button data-record-view="collaboration">智能体协作</button><button data-record-view="tool-calls">工具执行</button></div>' : ""}<div id="model-content"></div></div>`;
     root
       .querySelector("#new-provider")
       ?.addEventListener("click", safe(create));
@@ -60,17 +60,10 @@ export function createProviderUI({ api, E, modal, toast }) {
     });
     const target = root.querySelector("#model-content");
     if (view === "providers") {
-      const [rows, models, d] = await Promise.all([
+      const [rows, models] = await Promise.all([
         api("/ai/providers"),
         api("/ai/models"),
-        api("/ai/defaults"),
       ]);
-      const defaults = document.createElement("div");
-      target.before(defaults);
-      await modelCatalogUI.renderDefaults(defaults, render, {
-        defaults: d,
-        models,
-      });
       target.innerHTML = `<div class="provider-services">${rows.map((r) => `<article class="panel provider-service"><header class="panel-head"><div><h2>${E(r.name)}</h2><p class="small">${E(r.endpoint)}</p></div><div class="row"><span class="badge neutral">${r.protocol === "anthropic" ? "Anthropic Messages" : "Chat Completions"}</span><span class="badge neutral">${models.filter((m) => m.provider_id === r.id && m.model_type === "chat").length} 对话 / ${models.filter((m) => m.provider_id === r.id && m.model_type === "embedding").length} Embedding</span><span class="badge ${r.enabled && r.keyConfigured ? "success" : "neutral"}">${!r.enabled ? "已停用" : r.keyConfigured ? "密钥已配置" : "待配置密钥"}</span><button type="button" data-edit-provider="${r.id}">连接配置</button><button type="button" class="quiet danger" data-delete-provider="${r.id}">删除</button></div></header><div data-provider-models="${r.id}"></div></article>`).join("")}</div>${rows.length ? "" : '<section class="panel empty"><strong>添加第一个模型服务</strong><p>配置连接并选择模型，一次保存后即可用于智能体和知识库。</p><button type="button" id="empty-add-provider" class="primary">添加模型服务</button></section>'}`;
       target
         .querySelector("#empty-add-provider")
@@ -230,8 +223,7 @@ export function createProviderUI({ api, E, modal, toast }) {
     picker = createModelPicker({
       target: o.querySelector("[data-create-model-picker]"),
       E,
-      withDefaults: true,
-      autoChatDefault: !defaults.chat_id,
+      withDefaults: false,
       discover: () =>
         api("/ai/providers/preview-models", {
           method: "POST",
@@ -261,7 +253,7 @@ export function createProviderUI({ api, E, modal, toast }) {
   function edit(r) {
     const o = modal(
       "连接配置 · " + r.name,
-      `${input("name", "显示名称", r.name)}${input("key", "替换密钥（留空保留）", "", "password")}<details><summary>高级连接设置</summary>${input("endpoint", "接口基础地址（包含 /v1）", r.endpoint, "url")}<label>协议<select name="protocol"><option value="openai">Chat Completions</option><option value="anthropic">Anthropic Messages</option></select></label>${input("keyEnv", "密钥环境变量", r.key_env)}<label><input type="checkbox" name="clearKey">清除已保存的加密密钥</label><label><input type="checkbox" name="enabled" ${r.enabled ? "checked" : ""}>启用供应商</label><label><input type="checkbox" name="includeUsage" ${r.include_usage !== 0 ? "checked" : ""}>请求流式用量</label>${input("maxTokens", "Anthropic 输出 token 上限", r.max_tokens || 2048, "number")}</details><p class="small">连接配置由该供应商下所有模型共用。默认模型请在页面顶部统一设置。</p>`,
+      `${input("name", "显示名称", r.name)}${input("key", "替换密钥（留空保留）", "", "password")}<details><summary>高级连接设置</summary>${input("endpoint", "接口基础地址（包含 /v1）", r.endpoint, "url")}<label>协议<select name="protocol"><option value="openai">Chat Completions</option><option value="anthropic">Anthropic Messages</option></select></label>${input("keyEnv", "密钥环境变量", r.key_env)}<label><input type="checkbox" name="clearKey">清除已保存的加密密钥</label><label><input type="checkbox" name="enabled" ${r.enabled ? "checked" : ""}>启用供应商</label><label><input type="checkbox" name="includeUsage" ${r.include_usage !== 0 ? "checked" : ""}>请求流式用量</label>${input("maxTokens", "Anthropic 输出 token 上限", r.max_tokens || 2048, "number")}</details><p class="small">连接配置由该供应商下所有模型共用。对话与 Embedding 模型分别在智能体和知识库中选择。</p>`,
       "保存连接",
       async (b) => {
         await api("/ai/providers/" + r.id, {

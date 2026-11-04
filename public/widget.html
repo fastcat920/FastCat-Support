@@ -6,12 +6,13 @@
     <title>FastCat · 在线客服</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body class="widget-body">
+  <body class="widget-body widget-loading">
+    <div id="widget-loading-status" role="status">加载中 / Loading…</div>
     <main class="widget-shell">
       <header>
         <h2>你好，有什么可以帮你？</h2>
         <div class="widget-header-meta">
-          <span id="widget-service-status">在线客服</span
+          <span id="widget-service-status"></span
           ><button
             id="widget-sound"
             type="button"
@@ -19,7 +20,19 @@
             aria-label="声音：开"
             title="声音：开"
           >
-            🔔</button
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+              <path d="M10 21h4" />
+              <path class="sound-muted-line" d="m3 3 18 18" />
+            </svg></button
           ><button type="button" id="widget-handoff" hidden>联系人工</button>
         </div>
       </header>
