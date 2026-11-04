@@ -798,9 +798,11 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/events") {
         res.writeHead(200, {
           "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
+          "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
         });
+        res.flushHeaders();
         res.write(": connected\n\n");
         peers.add(res);
         peerUsers.set(res, u.id);
