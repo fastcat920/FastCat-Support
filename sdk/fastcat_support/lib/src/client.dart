@@ -360,6 +360,9 @@ class FastCatClient {
   }
 
   Future<void> reset() async {
+    for (final stop in _watchStops.toList()) {
+      stop();
+    }
     await unregisterPushDevice();
     await endAssistance();
     _session = null;
@@ -445,42 +448,169 @@ class FastCatClient {
     return response.bodyBytes;
   }
 
-  /// Polling uses durable message cursors; transient failures reach onError and
-  /// polling continues. Read receipts must be sent by the visible UI separately.
+  final Set<void Function()> _watchStops = {};
+
+  /// SSE invalidates the durable cursor feed; polling only runs while SSE is down.
   Stream<Map<String, dynamic>> watch(
       {Duration interval = const Duration(seconds: 2),
       int after = 0,
-      void Function(Object)? onError}) async* {
+      void Function(Object)? onError}) {
     _requireSession();
     final id = conversationId;
-    var cursor = after;
-    _watchers++;
-    _setConnection(FastCatConnectionStatus.connecting);
-    try {
-      while (!_closed && conversationId == id) {
-        try {
-          final page = await messages(after: cursor);
-          _setConnection(FastCatConnectionStatus.connected);
-          _observePage(page);
-          yield page;
-          cursor = page['nextCursor'] as int? ?? cursor;
-          if (page['hasMore'] == true) continue;
-        } catch (e) {
-          _setConnection(FastCatConnectionStatus.reconnecting);
-          onError?.call(e);
-          if (e is FastCatException && [403, 409].contains(e.status)) rethrow;
-        }
-        await Future<void>.delayed(interval);
+    var cursor = after, failures = 0;
+    var stopped = false, syncing = false, dirty = false, live = false;
+    Timer? polling, reconnect, heartbeat;
+    StreamSubscription<String>? events;
+    Completer<void>? abort;
+    late StreamController<Map<String, dynamic>> output;
+    late void Function() stop;
+    bool valid() => !stopped && !_closed && conversationId == id;
+    bool fatal(Object e) =>
+        e is FastCatException && [401, 403, 409].contains(e.status);
+    void report(Object e) {
+      if (!valid()) return;
+      onError?.call(e);
+      if (fatal(e)) {
+        output.addError(e);
+        stop();
       }
-    } finally {
+    }
+
+    Future<void> sync() async {
+      if (!valid()) return;
+      dirty = true;
+      if (syncing) return;
+      syncing = true;
+      try {
+        while (valid() && dirty) {
+          dirty = false;
+          try {
+            final page = await messages(after: cursor);
+            if (!valid()) break;
+            cursor = page['nextCursor'] as int? ?? cursor;
+            _setConnection(FastCatConnectionStatus.connected);
+            _observePage(page);
+            output.add(page);
+            if (page['hasMore'] == true) dirty = true;
+          } catch (e) {
+            report(e);
+            break;
+          }
+        }
+      } finally {
+        syncing = false;
+      }
+    }
+
+    late Future<void> Function() connect;
+    void disconnected([Object? error]) {
+      if (!valid() || reconnect != null) return;
+      live = false;
+      heartbeat?.cancel();
+      events?.cancel();
+      events = null;
+      if (abort != null && !abort!.isCompleted) abort!.complete();
+      _setConnection(FastCatConnectionStatus.reconnecting);
+      if (error != null) report(error);
+      if (!valid()) return;
+      polling ??= Timer.periodic(interval, (_) => unawaited(sync()));
+      final delay = Duration(seconds: min(30, 1 << min(failures++, 5)));
+      reconnect = Timer(delay, () {
+        reconnect = null;
+        unawaited(connect());
+      });
+    }
+
+    void touchHeartbeat() {
+      heartbeat?.cancel();
+      heartbeat = Timer(const Duration(seconds: 65),
+          () => disconnected(TimeoutException('SSE heartbeat timeout')));
+    }
+
+    connect = () async {
+      if (!valid()) return;
+      polling ??= Timer.periodic(interval, (_) => unawaited(sync()));
+      final attempt = Completer<void>();
+      abort = attempt;
+      try {
+        final request = http.AbortableRequest(
+            'GET', _uri('/events', {'id': id!}),
+            abortTrigger: attempt.future)
+          ..headers.addAll({..._headers, 'Accept': 'text/event-stream'});
+        final response =
+            await _http.send(request).timeout(const Duration(seconds: 20));
+        if (!valid() || abort != attempt) {
+          if (!attempt.isCompleted) attempt.complete();
+          return;
+        }
+        if (response.statusCode != 200 ||
+            !(response.headers['content-type'] ?? '')
+                .contains('text/event-stream')) {
+          await response.stream.listen((_) {}).cancel();
+          if ([401, 403, 409].contains(response.statusCode))
+            throw FastCatException(response.statusCode, 'Session expired');
+          disconnected();
+          return;
+        }
+        live = true;
+        failures = 0;
+        polling?.cancel();
+        polling = null;
+        _setConnection(FastCatConnectionStatus.connected);
+        touchHeartbeat();
+        events = response.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .listen((line) {
+          if (!valid() || !live) return;
+          touchHeartbeat();
+          if (line.startsWith('data:')) unawaited(sync());
+        },
+                onError: (Object e) => disconnected(e),
+                onDone: () => disconnected());
+        // Catch messages committed between the initial pull and SSE subscription.
+        unawaited(sync());
+      } catch (e) {
+        if (valid() && abort == attempt) disconnected(e);
+      }
+    };
+    stop = () {
+      if (stopped) return;
+      stopped = true;
+      polling?.cancel();
+      reconnect?.cancel();
+      heartbeat?.cancel();
+      if (abort != null && !abort!.isCompleted) abort!.complete();
+      events?.cancel();
+      _watchStops.remove(stop);
       _watchers--;
       if (!_closed && _watchers == 0)
         _setConnection(FastCatConnectionStatus.idle);
-    }
+      unawaited(output.close());
+    };
+    output = StreamController<Map<String, dynamic>>(
+        onListen: () {
+          _watchers++;
+          _watchStops.add(stop);
+          if (!valid()) {
+            stop();
+            return;
+          }
+          _setConnection(FastCatConnectionStatus.connecting);
+          unawaited(() async {
+            await sync();
+            if (valid()) await connect();
+          }());
+        },
+        onCancel: () => stop());
+    return output.stream;
   }
 
   void close() {
     if (_closed) return;
+    for (final stop in _watchStops.toList()) {
+      stop();
+    }
     unawaited(setPushChatVisible(false).catchError((Object _) {}));
     final ending = endAssistance();
     _closed = true;

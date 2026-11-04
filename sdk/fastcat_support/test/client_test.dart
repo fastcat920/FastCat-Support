@@ -21,7 +21,112 @@ class MemoryStore implements FastCatSessionStore {
   }
 }
 
+class SSEClient extends http.BaseClient {
+  final streams = <StreamController<List<int>>>[];
+  final requests = <http.BaseRequest>[];
+  int pulls = 0, seq = 0;
+  bool denyEvents = false;
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    requests.add(request);
+    if (request.url.path.endsWith('/events')) {
+      if (denyEvents) return http.StreamedResponse(const Stream.empty(), 403);
+      final stream = StreamController<List<int>>();
+      streams.add(stream);
+      if (request is http.AbortableRequest) {
+        request.abortTrigger?.then((_) {
+          if (!stream.isClosed) unawaited(stream.close());
+        });
+      }
+      return http.StreamedResponse(stream.stream, 200,
+          headers: {'content-type': 'text/event-stream'});
+    }
+    Map<String, dynamic> result;
+    if (request.url.path.endsWith('/start'))
+      result = {'id': 'c', 'token': 't'};
+    else {
+      pulls++;
+      final after =
+          int.tryParse(request.url.queryParameters['after'] ?? '0') ?? 0;
+      result = {
+        'messages': seq > after
+            ? [
+                {'id': 'm$seq', 'seq': seq, 'role': 'agent', 'body': 'reply'}
+              ]
+            : [],
+        'nextCursor': seq
+      };
+    }
+    return http.StreamedResponse(
+        Stream.value(utf8.encode(jsonEncode(result))), 200);
+  }
+}
+
+Future<void> eventually(bool Function() condition) async {
+  for (var i = 0; i < 400 && !condition(); i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+  expect(condition(), true);
+}
+
 void main() {
+  test(
+      'SSE idles without polling, parses fragmented updates, reconnects and cleans up',
+      () async {
+    final transport = SSEClient();
+    final client = FastCatClient(
+        baseUrl: Uri.parse('https://support.example.com'),
+        appKey: 'key',
+        client: transport);
+    await client.start(email: 'a@example.com');
+    final pages = <Map<String, dynamic>>[];
+    final subscription = client
+        .watch(interval: const Duration(milliseconds: 10))
+        .listen(pages.add);
+    await eventually(
+        () => transport.streams.isNotEmpty && transport.pulls >= 2);
+    final baseline = transport.pulls;
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(transport.pulls, baseline);
+    expect(
+        transport.requests
+            .firstWhere((r) => r.url.path.endsWith('/events'))
+            .headers['Authorization'],
+        'Bearer t');
+    transport.seq = 1;
+    transport.streams.first.add(utf8.encode('data: up'));
+    transport.streams.first.add(utf8.encode('date\n\n'));
+    await eventually(() => pages.any((p) => p['nextCursor'] == 1));
+    await transport.streams.first.close();
+    transport.seq = 2;
+    await eventually(() => pages.any((p) => p['nextCursor'] == 2));
+    await eventually(() => transport.streams.length >= 2);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    final stable = transport.pulls;
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(transport.pulls, stable);
+    await subscription.cancel();
+    final ended = transport.pulls;
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(transport.pulls, ended);
+    client.close();
+  });
+  test('SSE expired authorization terminates instead of polling forever',
+      () async {
+    final transport = SSEClient()..denyEvents = true;
+    final client = FastCatClient(
+        baseUrl: Uri.parse('https://support.example.com'),
+        appKey: 'key',
+        client: transport);
+    await client.start(email: 'a@example.com');
+    await expectLater(
+        client.watch().toList(), throwsA(isA<FastCatException>()));
+    final pulls = transport.pulls;
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(transport.pulls, pulls);
+    client.close();
+  });
+
   test(
       'push registration is conversation-authenticated and reset unbinds before clearing',
       () async {

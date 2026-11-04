@@ -1,6 +1,6 @@
 # FastCat Support · Flutter / Dart SDK
 
-SDK 版本 0.28.1，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
+SDK 版本 0.29.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
 
 ## 安装与连接
 
@@ -109,7 +109,7 @@ support.connectionStatusStream.listen((status) {
 
 Launcher 显示已同步、尚未读取的客服/AI 回复角标。点击后进入全屏聊天；入口本身不提交已读，聊天页在前台可见时提交回执。宿主切换业务账号、reset 或重建会话时，应先销毁旧 Launcher/Chat，再以新会话重建组件。尚无独立 unreadCountStream、全局 show/hide 或底部弹层接口。
 
-聊天页显示 automation.draft 临时内容，最终消息到达后移除草稿。连接事件表示轮询状态，仍是两秒增量轮询，不等同于 WebSocket。Launcher 未挂载时观察停止；无后台系统推送。
+聊天页显示 automation.draft 临时内容，最终消息到达后移除草稿。0.29.0 起优先使用 SSE，连接正常时不定时轮询；断线期间临时轮询并自动重连，恢复后停止轮询。后台系统通知由宿主接入 APNs/FCM。
 
 ## 0.13 消息展示
 
@@ -152,7 +152,7 @@ final monitor = client.watch().listen((page) {});
 // 退出账号时取消订阅并 close client。
 ```
 
-初次同步历史不会触发新消息提示音，重复轮询消息按 seq 去重。未读数随已读游标更新；当前采用前台轮询，不提供 App 被系统挂起或关闭后的系统推送。系统声音受静音模式及平台行为影响。Flutter 与网页共用后台配置，但分别绘制，字体、系统控件和平台附件选择器存在差异，尚需真机视觉验收。
+初次同步历史不会触发新消息提示音，消息按 seq 去重。未读数随已读游标更新；前台采用 SSE，后台系统通知需要宿主接入 APNs/FCM。系统声音受静音模式及平台行为影响。Flutter 与网页共用后台配置，但分别绘制，字体、系统控件和平台附件选择器存在差异，尚需真机视觉验收。
 
 
 ## 0.20：与网页统一的原生 UI
@@ -200,3 +200,17 @@ final monitor = client.watch().listen((page) {});
 ## 用户端系统推送（0.28.1）
 
 新增 registerPushDevice、unregisterPushDevice、pushStatus、setPushChatVisible。宿主提供 APNs/FCM token，FastCatChat 自动上报前后台。详见项目 docs/USER-PUSH.md；系统权限、接收通知和点击跳转由宿主处理。
+
+## SSE realtime updates (0.29.0)
+
+Existing `client.watch()`, FastCatChat and FastCatLauncher calls remain compatible.
+The SDK first synchronizes history, then opens `/api/widget/events`. SSE events
+trigger serialized incremental pulls; durable cursors recover messages across
+reconnects. Healthy idle connections do not poll. `interval` controls fallback
+polling only (default 2 seconds). Reconnection backs off from 1 to 30 seconds;
+a missing heartbeat for 65 seconds also reconnects. Cancellation, reset and close
+release streams, requests and timers. Expired credentials terminate the watcher.
+
+Update the backend together with this SDK to disable reverse proxy buffering for
+visitor SSE. Browser streaming depends on the host HTTP implementation and falls
+back to polling if unsupported. Background/terminated apps still use APNs/FCM.

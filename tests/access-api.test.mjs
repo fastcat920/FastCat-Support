@@ -551,3 +551,37 @@ test("default web and SDK share an editable Key with revision checks and old key
     200,
   );
 });
+
+test("visitor SSE flushes updates with reverse proxy buffering disabled", async () => {
+  const web = (await call("/api/access/channels")).data.find(
+    (c) => c.type === "web" && c.is_default,
+  );
+  const visitor = (
+    await call("/api/widget/start?appKey=" + web.public_key, "POST", {
+      email: "sse@example.test",
+    })
+  ).data;
+  const abort = new AbortController();
+  try {
+    const response = await fetch(
+      base +
+        "/api/widget/events?id=" +
+        visitor.id +
+        "&appKey=" +
+        web.public_key,
+      {
+        headers: { Authorization: "Bearer " + visitor.token },
+        signal: abort.signal,
+      },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-accel-buffering"), "no");
+    assert.match(response.headers.get("cache-control"), /no-transform/);
+    const reader = response.body.getReader();
+    const first = await reader.read();
+    assert.match(new TextDecoder().decode(first.value), /data: update/);
+    await reader.cancel();
+  } finally {
+    abort.abort();
+  }
+});

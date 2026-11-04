@@ -519,9 +519,11 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/widget/events" && method === "GET") {
         res.writeHead(200, {
           "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Accel-Buffering": "no",
           Connection: "keep-alive",
         });
+        res.flushHeaders();
         res.write("data: update\n\n");
         if (!visitorPeers.has(c.id)) visitorPeers.set(c.id, new Set());
         const group = visitorPeers.get(c.id);
