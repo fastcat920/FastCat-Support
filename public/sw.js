@@ -1,4 +1,4 @@
-const CACHE = "fastcat-shell-v029-reply-categories-1";
+const CACHE = "fastcat-shell-v030-human-auto-assignment-1";
 const FILES = [
   "/assistance.js",
   "/configuration-cache.js",

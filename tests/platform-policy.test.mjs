@@ -720,11 +720,61 @@ test("handoff button visibility defaults on and persists false for web and SDK c
 test("bilingual welcome is persisted, bounded and marked for localized rendering", async () => {
   const x = setup();
   try {
-    const c = await x.channel("off", {widget: {welcomeMessageZh: "欢迎咨询", welcomeMessageEn: "Welcome"}});
+    const c = await x.channel("off", {
+      widget: { welcomeMessageZh: "欢迎咨询", welcomeMessageEn: "Welcome" },
+    });
     const visitor = x.conversation(c.id);
-    const message = x.db.prepare("SELECT body,source FROM messages WHERE conversation_id=?").get(visitor.id);
+    const message = x.db
+      .prepare("SELECT body,source FROM messages WHERE conversation_id=?")
+      .get(visitor.id);
     assert.equal(message.source, "welcome");
     assert.equal(message.body, "欢迎咨询");
-    await assert.rejects(x.channel("off", {widget: {welcomeMessageEn: "x".repeat(3001)}}), e => e.status === 400);
-  } finally { x.service.close?.(); x.db.close(); }
+    await assert.rejects(
+      x.channel("off", { widget: { welcomeMessageEn: "x".repeat(3001) } }),
+      (e) => e.status === 400,
+    );
+  } finally {
+    x.service.close?.();
+    x.db.close();
+  }
+});
+
+test("human reception assigns first visitor message, queues at capacity and fills waiting history", async () => {
+  const x = setup();
+  try {
+    const ch = await x.channel("off");
+    x.db.exec("UPDATE users SET capacity=1");
+    const a = x.conversation(ch.id),
+      b = x.conversation(ch.id),
+      empty = x.conversation(ch.id);
+    const row = (c) =>
+      x.db.prepare("SELECT * FROM conversations WHERE id=?").get(c.id);
+    assert.equal(row(a).assignee, "");
+    x.send(a, "Hi");
+    assert.equal(row(a).assignee, "admin");
+    x.send(b, "Hello");
+    assert.equal(row(b).assignee, "");
+    assert.equal(row(b).handoff_pending, 1);
+    x.db.exec("UPDATE users SET availability='offline'");
+    x.db
+      .prepare("UPDATE conversations SET status='closed' WHERE id=?")
+      .run(a.id);
+    x.service.tick();
+    assert.equal(row(b).assignee, "");
+    x.db.exec("UPDATE users SET availability='available'");
+    x.service.tick();
+    assert.equal(row(b).assignee, "admin");
+    assert.equal(row(empty).assignee, "");
+    assert.equal(x.calls.length, 0);
+    x.db
+      .prepare(
+        "UPDATE conversations SET assignee='',handoff_pending=0,handoff_reason='' WHERE id=?",
+      )
+      .run(b.id);
+    x.service.tick();
+    assert.equal(row(b).assignee, "admin");
+  } finally {
+    x.service.close();
+    x.db.close();
+  }
 });
