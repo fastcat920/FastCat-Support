@@ -799,3 +799,28 @@ test("default human reception inherit assigns and backfills exactly like off", a
     x.db.close();
   }
 });
+
+test("legacy inherit and off present as one canonical human reception mode", async () => {
+  const x = setup();
+  try {
+    const ch = await x.channel("off");
+    x.db
+      .prepare("UPDATE access_channels SET ai_mode='inherit' WHERE id=?")
+      .run(ch.id);
+    assert.equal(x.channels.policy(ch.id).ai_mode, "off");
+    assert.equal(x.channels.list().find((c) => c.id === ch.id).ai_mode, "off");
+    const legacy = await x.channel("inherit");
+    assert.equal(legacy.ai_mode, "off");
+    const c = x.conversation(ch.id);
+    x.send(c, "Hi");
+    assert.equal(
+      x.db.prepare("SELECT assignee FROM conversations WHERE id=?").get(c.id)
+        .assignee,
+      "admin",
+    );
+    assert.equal(x.calls.length, 0);
+  } finally {
+    x.service.close();
+    x.db.close();
+  }
+});

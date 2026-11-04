@@ -1,5 +1,8 @@
 // UI text only. Customer messages, code, and input values are preserved.
 export const english = {
+  "人工接待（默认）": "Human support (default)",
+  "AI 自动接待": "AI reception",
+  "人工优先，超时由 AI 回复": "Human first, AI after timeout",
   回复分类: "Reply categories",
   管理回复分类: "Manage reply categories",
   添加分类: "Add category",
@@ -268,7 +271,6 @@ export const english = {
   固定主题色: "Fixed accent color",
   语言跟随方式: "Language",
   主题跟随方式: "Appearance",
-  "人工接待（默认）": "Manual reception (default)",
   "AI 自动": "AI reception",
   人工优先: "Staff first",
   纯人工: "Staff only",

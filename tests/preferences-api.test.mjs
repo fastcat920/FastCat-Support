@@ -162,6 +162,8 @@ test("avatar upload persists for its owner and rejects executable or oversized c
   );
 });
 test("notification feed excludes staff/system messages and conversations outside current access scope", async () => {
+  await call("/presence", "PATCH", { availability: "offline" });
+  await call("/presence", "PATCH", { availability: "offline" }, staffCookie);
   const baseline = (await call("/notifications")).data.cursor;
   const v = (
     await call("/widget/start", "POST", { email: "notification@example.test" })

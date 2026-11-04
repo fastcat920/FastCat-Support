@@ -31,7 +31,7 @@ export function createAccessUI({ api, E, modal, toast }) {
       inherit: "人工接待（默认）",
       auto: "AI 自动",
       assist: "人工优先",
-      off: "纯人工",
+      off: "人工接待（默认）",
     })[mode] || mode;
   let selected = null,
     selectedConfigTab = "basic",
@@ -204,7 +204,7 @@ export function createAccessUI({ api, E, modal, toast }) {
       enabled: false,
       origins: [],
       widget: widgetDefaults,
-      ai_mode: "inherit",
+      ai_mode: "off",
       agent_id: "",
       fallback_timeout: 0,
     };
@@ -256,10 +256,9 @@ export function createAccessUI({ api, E, modal, toast }) {
       existing ? c.name + " 配置" : "添加网页 / SDK 平台",
       `<section data-platform-section="basic">${!existing ? `<div class="field"><label>平台类型<select name="type"><option value="web" ${c.type === "web" ? "selected" : ""}>网页端</option><option value="sdk" ${c.type === "sdk" ? "selected" : ""}>Flutter / Dart SDK</option></select></label></div>` : ""}${input("平台名称", "name", c.name)}<label><input type="checkbox" name="enabled" ${c.enabled ? "checked" : ""}> 启用平台</label><div class="field"><label>允许的网站来源（每行一个完整 origin）<textarea name="origins" rows="2" placeholder="https://www.example.com">${E(c.origins.join("\n"))}</textarea></label><p class="small">网页嵌入与 Flutter Web 需要配置；原生 SDK 无需来源。</p><div data-local-preview><label class="retrieval-checkbox"><input type="checkbox" name="allowLocalFilePreview" ${w.allowLocalFilePreview ? "checked" : ""}>允许本地文件预览（file://）</label><p class="small">本地文件预览会允许来源为 null 的页面访问该平台；正式网站请配置具体来源。</p></div></div></section><section data-platform-section="ai"><h3>AI 接待策略</h3><div class="field"><label>接待模式<select name="ai_mode">${Object.entries(
         {
-          inherit: "人工接待（默认）",
+          off: "人工接待（默认）",
           auto: "AI 自动接待",
           assist: "人工优先，超时由 AI 回复",
-          off: "纯人工，关闭 AI",
         },
       )
         .map(
