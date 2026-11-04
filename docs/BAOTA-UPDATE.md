@@ -10,7 +10,7 @@
 npm run update
 ```
 
-默认宝塔项目名 `fastcat-support`。脚本识别自身所在目录，预检宝塔项目是否存在、仓库是否干净、分支是否为 main；随后 fast-forward 拉取 origin/main，依赖声明/锁文件变化或 node_modules 不存在时运行 npm ci --omit=dev，再调用宝塔自身的 restart_project 并检查本机服务。无需安装第二套 PM2，不修改宝塔启动命令、环境变量或数据目录。
+默认宝塔项目名 `fastcat-support`，找不到时按当前代码目录自动匹配唯一宝塔项目。脚本识别自身所在目录，预检宝塔项目是否存在、仓库是否干净、分支是否为 main；随后 fast-forward 拉取 origin/main，依赖声明/锁文件变化或 node_modules 不存在时运行 npm ci --omit=dev，再调用宝塔自身的 restart_project 并检查本机服务。无需安装第二套 PM2，不修改宝塔启动命令、环境变量或数据目录。
 
 失败不会强制覆盖本地文件，也不会自动回退数据库。拉取或安装依赖失败不执行重启；若依赖安装失败，需根据日志修复后重新执行，期间现有进程仍可能受缺失依赖影响。项目端口优先从宝塔配置读取；读取不到时使用 18763。健康检查是本机 /api/setup 返回 200，不代表域名 SSL、代理、AI 或推送通道均正常。
 
