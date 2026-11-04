@@ -2,6 +2,40 @@
 
 项目内置 `npm run update`，不需要在服务器手写更新脚本。首次部署仍需先安装 Node.js 24、拉取代码、安装依赖并在宝塔创建 Node 项目。
 
+## 全新部署（直接使用网站目录）
+
+统一使用 `/www/wwwroot/support.fastcat.lol`，不再创建 app 子目录。宝塔 Node 项目目录必须与代码目录一致。
+
+重新部署前先停止旧项目，并备份旧 data 目录及推送私钥。此处是全新部署步骤，不要直接删除已有目录。确认目标目录为空；宝塔默认页面或旧文件需先移到备份位置，不能用强制覆盖替代备份。
+
+```sh
+cd /www/wwwroot/support.fastcat.lol
+git clone https://github.com/fastcat920/FastCat-Support.git .
+export PATH=/www/server/nodejs/v24.22.2/bin:$PATH
+npm ci --omit=dev
+mkdir -p data
+chown -R www:www data node_modules
+```
+
+`git clone` 最后的 `.` 表示直接下载到当前目录。首次创建网站目录可用宝塔文件管理器完成；空目录才能使用此克隆命令。
+
+如需保留旧业务数据，在首次启动前将备份的 data 目录恢复到这里，再确认 www 用户可读写。新建宝塔 Node 项目：
+
+| 设置      | 值                                 |
+| --------- | ---------------------------------- |
+| 项目目录  | `/www/wwwroot/support.fastcat.lol` |
+| 项目名称  | `fastcat-support`                  |
+| Node 版本 | 24 或更高版本                      |
+| 包管理器  | npm                                |
+| 启动脚本  | start（node server.mjs）           |
+| 运行用户  | www                                |
+| 项目端口  | 18763                              |
+| 实例数量  | 1                                  |
+
+项目环境变量设置 `HOST=127.0.0.1`、`PORT=18763`；HTTPS 域名访问时设置 `COOKIE_SECURE=1`。仅填写宝塔“项目端口”不会改变 Node 的监听端口。推送密钥路径需要按新服务器实际位置重新配置，勿放在公开目录。
+
+项目启动后通过宝塔绑定域名及 SSL；同一域名不要同时绑定两个站点。首次部署先在宝塔启动一次，后续才使用下面的更新命令。
+
 ## 日常使用
 
 在仓库目录（包含 package.json 的目录）执行：
@@ -19,7 +53,7 @@ npm run update
 旧服务器还没有 update 脚本时，只需先执行一次：
 
 ```sh
-cd /www/wwwroot/support.fastcat.lol/app
+cd /www/wwwroot/support.fastcat.lol
 git pull --ff-only origin main
 npm run update
 ```
