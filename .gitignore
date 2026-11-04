@@ -19,3 +19,6 @@ artifacts/
 secrets/
 *.p8
 *firebase-adminsdk*.json
+
+.fastcat-update.json
+.fastcat-update.lock
