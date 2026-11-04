@@ -22,3 +22,10 @@ secrets/
 
 .fastcat-update.json
 .fastcat-update.lock
+
+# Baota site metadata, ACME challenges and default placeholder pages (root only)
+/.htaccess
+/.user.ini
+/.well-known/
+/index.html
+/404.html
