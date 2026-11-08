@@ -1,6 +1,6 @@
 # FastCat Support · Flutter / Dart SDK
 
-SDK 版本 0.29.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
+SDK 版本 0.29.1，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
 
 ## 安装与连接
 
@@ -214,3 +214,12 @@ release streams, requests and timers. Expired credentials terminate the watcher.
 Update the backend together with this SDK to disable reverse proxy buffering for
 visitor SSE. Browser streaming depends on the host HTTP implementation and falls
 back to polling if unsupported. Background/terminated apps still use APNs/FCM.
+
+## Local calendar dates (0.29.1)
+
+Date separators and bubble times use the device's local timezone. UTC timestamps
+and explicit timezone offsets are converted before deriving the calendar date;
+message order, server timestamps and cursors remain unchanged. Chinese separators
+use year/month/day, English separators use month name/day/year. Invalid dates do
+not produce a separator. Web chat also groups by local dates and follows its UI
+language when formatting separators.

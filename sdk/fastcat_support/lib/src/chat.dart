@@ -1,3 +1,4 @@
+import 'message_date.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'assistance.dart';
 import 'package:flutter/services.dart';
@@ -214,8 +215,22 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
   String _dateLabel(String date) {
     final value = DateTime.tryParse(date);
     if (value == null) return date;
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
+    ];
     return _t('${value.year}年${value.month}月${value.day}日',
-        '${value.month}/${value.day}/${value.year}');
+        '${months[value.month - 1]} ${value.day}, ${value.year}');
   }
 
   void _subscribe() {
@@ -813,17 +828,14 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
                             itemBuilder: (context, i) {
                               if (i < _messages.length) {
                                 final m = _messages[i];
-                                final date = (m['created'] as String? ?? '')
-                                    .split('T')
-                                    .first;
+                                final date =
+                                    localMessageDay(m['created'] as String?);
                                 final previous = i == 0
                                     ? ''
-                                    : (_messages[i - 1]['created'] as String? ??
-                                            '')
-                                        .split('T')
-                                        .first;
+                                    : localMessageDay(
+                                        _messages[i - 1]['created'] as String?);
                                 return Column(children: [
-                                  if (date != previous)
+                                  if (date.isNotEmpty && date != previous)
                                     Padding(
                                         padding:
                                             const EdgeInsets.only(bottom: 20),

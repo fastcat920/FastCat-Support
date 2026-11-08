@@ -79,6 +79,35 @@ class ControlledSendClient extends FakeClient {
 }
 
 void main() {
+  testWidgets('date separators follow local bubble times across midnight',
+      (tester) async {
+    final c = FakeClient();
+    await tester.pumpWidget(
+        MaterialApp(home: FastCatChat(client: c, locale: const Locale('zh'))));
+    await tester.pumpAndSettle();
+    final dates = [DateTime(2026, 11, 7, 23, 59), DateTime(2026, 11, 8, 0, 46)];
+    c.pages.add({
+      'messages': [
+        for (var i = 0; i < dates.length; i++)
+          {
+            'id': 'date$i',
+            'seq': i + 1,
+            'role': 'agent',
+            'body': 'date message $i',
+            'created': dates[i].toUtc().toIso8601String()
+          }
+      ],
+      'nextCursor': 2
+    });
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2026'), findsNWidgets(2));
+    expect(find.text('00:46'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await c.pages.close();
+    await c.reads.close();
+    c.close();
+  });
+
   testWidgets(
       'header omits generic placeholder but preserves actual service status and language changes',
       (tester) async {

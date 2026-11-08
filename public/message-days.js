@@ -1,4 +1,8 @@
-export function withMessageDays(messages, render) {
+export function withMessageDays(
+  messages,
+  render,
+  locale = globalThis.document?.documentElement.lang || undefined,
+) {
   let previous = "";
   return messages
     .map((message) => {
@@ -9,9 +13,9 @@ export function withMessageDays(messages, render) {
         : "";
       const separator =
         key && key !== previous
-          ? `<div class="message-day" role="separator">${date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}</div>`
+          ? `<div class="message-day" role="separator">${date.toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" })}</div>`
           : "";
-      previous = key;
+      if (key) previous = key;
       return separator + render(message);
     })
     .join("");

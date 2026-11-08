@@ -1,4 +1,4 @@
-const CACHE = "fastcat-shell-v032-reception-modes-1";
+const CACHE = "fastcat-shell-v033-local-message-days-1";
 const FILES = [
   "/assistance.js",
   "/configuration-cache.js",
