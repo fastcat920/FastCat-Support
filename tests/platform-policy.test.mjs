@@ -154,7 +154,7 @@ test("independent platform auto/off modes and selected agents override workspace
     x.close();
   }
 });
-test("assist waits until timeout, replies through selected agent and respects staff intervention", async () => {
+test("assist assigns a human before timeout, falls back through selected agent and respects staff intervention", async () => {
   const x = setup();
   try {
     const profile = await x.channel("assist");
@@ -163,8 +163,9 @@ test("assist waits until timeout, replies through selected agent and respects st
     assert.equal(
       x.db.prepare("SELECT assignee FROM conversations WHERE id=?").get(c.id)
         .assignee,
-      "",
+      "admin",
     );
+    assert.equal(x.service.status(c.id).handoffRequested, false);
     x.advance(9999);
     x.service.tick();
     await x.flush();

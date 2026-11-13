@@ -71,3 +71,31 @@ test("dependency changes install before restart", async () => {
     x.close();
   }
 });
+
+test("failed dependency install is retried even after the repository is up to date", async () => {
+  const { writeFileSync } = await import("node:fs");
+  const x = fixture();
+  writeFileSync(join(x.root, "package.json"), "{}");
+  writeFileSync(join(x.root, "package-lock.json"), "{}");
+  const old = process.env.npm_execpath;
+  process.env.npm_execpath = "/test/npm-cli.js";
+  let installs = 0;
+  const run = x.options.run;
+  x.options.run = (exe, args, ...rest) => {
+    if (args.includes("ci") && ++installs === 1) throw Error("install failed");
+    return run(exe, args, ...rest);
+  };
+  try {
+    await assert.rejects(update(x.root, x.options), /install failed/);
+    assert.equal(x.health(), 0);
+    await update(x.root, x.options);
+    assert.equal(installs, 2);
+    assert.equal(x.health(), 1);
+    await update(x.root, x.options);
+    assert.equal(installs, 2);
+  } finally {
+    if (old === undefined) delete process.env.npm_execpath;
+    else process.env.npm_execpath = old;
+    x.close();
+  }
+});

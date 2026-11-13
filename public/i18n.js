@@ -1,5 +1,23 @@
 // UI text only. Customer messages, code, and input values are preserved.
 export const english = {
+  "备份失败，请到设置中的备份恢复页面检查":
+    "Backup failed. Check Backup and restore in Settings.",
+  运行状态: "Runtime status",
+  备份恢复: "Backup and restore",
+  服务质量: "Service quality",
+  知识改进: "Knowledge improvements",
+  浅色模式主题色: "Light mode accent",
+  深色模式主题色: "Dark mode accent",
+  交接与结果: "Handover and outcome",
+  "请求过于频繁，请稍后重试": "Too many requests. Please try again shortly.",
+  "今日附件上传额度已用完，请稍后重试":
+    "Today's upload quota has been reached. Please try again later.",
+  "实时连接过多，请关闭重复窗口":
+    "Too many live connections. Close duplicate chat windows.",
+  访客身份凭据无效或已过期:
+    "Your identity proof is invalid or expired. Please reconnect.",
+  "服务暂时不可用，请稍后重试":
+    "Service is temporarily unavailable. Please try again later.",
   "人工接待（默认）": "Human support (default)",
   "AI 自动接待": "AI reception",
   "人工优先，超时由 AI 回复": "Human first, AI after timeout",

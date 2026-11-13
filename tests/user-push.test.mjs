@@ -221,3 +221,77 @@ test("FCM signs OAuth assertion, reuses access token and maps unregistered devic
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("unconfigured APNs cannot starve FCM and a restart reconciles durable events", async () => {
+  const x = setup({ configured: false });
+  let sent = 0;
+  const push = createUserPush(x.db, {
+    apns: { configured: false },
+    fcm: {
+      configured: true,
+      send: async () => {
+        sent++;
+        return { status: 200 };
+      },
+    },
+    clock: () => 100000,
+  });
+  for (let i = 0; i < 20; i++)
+    push.handle(x.c1, "PUT", {
+      deviceId: "installation_apns_" + i,
+      provider: "apns",
+      token: i.toString(16).padStart(64, "0"),
+    });
+  push.handle(x.c1, "PUT", {
+    deviceId: "installation_fcm_01",
+    provider: "fcm",
+    token: "fcm_registration_token_123456",
+  });
+  x.message("durable"); // no observe/broadcast: simulate process exit immediately after insert
+  const restarted = createUserPush(x.db, {
+    apns: { configured: false },
+    fcm: {
+      configured: true,
+      send: async () => {
+        sent++;
+        return { status: 200 };
+      },
+    },
+    clock: () => 100000,
+  });
+  await restarted.drain();
+  assert.equal(sent, 1);
+  assert.equal(
+    x.db
+      .prepare("SELECT count(*) n FROM user_push_jobs WHERE state='pending'")
+      .get().n,
+    20,
+  );
+  await restarted.drain();
+  assert.equal(sent, 1);
+  x.db.close();
+});
+test("failed enqueue rolls back seen markers and retries durable event", async () => {
+  const x = setup({ configured: true, send: async () => ({ status: 200 }) });
+  x.bind(x.c1);
+  x.message("recover");
+  x.db.exec(
+    "CREATE TRIGGER reject_job BEFORE INSERT ON user_push_jobs BEGIN SELECT RAISE(ABORT,'simulated write failure'); END;",
+  );
+  assert.throws(() => x.push.observe("c1"));
+  assert.equal(
+    x.db.prepare("SELECT count(*) n FROM user_push_seen").get().n,
+    0,
+  );
+  assert.equal(
+    x.db.prepare("SELECT count(*) n FROM user_push_events").get().n,
+    1,
+  );
+  x.db.exec("DROP TRIGGER reject_job");
+  await x.push.drain();
+  assert.equal(
+    x.db.prepare("SELECT state FROM user_push_jobs").get().state,
+    "sent",
+  );
+  x.db.close();
+});

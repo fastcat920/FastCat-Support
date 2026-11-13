@@ -52,6 +52,7 @@ class FastCatSupport {
       this.user,
       FastCatSessionStore? store,
       http.Client? httpClient,
+      Future<FastCatIdentityProof> Function()? identityProvider,
       Map<String, FastCatDiagnosticHandler> diagnosticHandlers = const {},
       Map<String, FastCatRepairHandler> repairHandlers = const {},
       Future<List<FastCatRouteOption>> Function()? routeOptions})
@@ -66,6 +67,7 @@ class FastCatSupport {
         appKey: appKey,
         store: this.store,
         sessionScope: scope,
+        identityProvider: identityProvider,
         client: httpClient);
     client.diagnosticHandlers = Map.of(diagnosticHandlers);
     client.repairHandlers = Map.of(repairHandlers);

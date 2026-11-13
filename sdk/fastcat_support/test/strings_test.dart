@@ -14,4 +14,11 @@ void main() {
     expect(supportError('Attachment must be 8 MB or smaller', false),
         contains('8 MB'));
   });
+  test(
+      'upload quotas and identity expiry are explained in the current language',
+      () {
+    expect(supportError('今日附件上传额度已用完，请稍后重试', true), contains('upload quota'));
+    expect(supportError('访客身份凭据无效或已过期', true),
+        contains('Session or permission expired'));
+  });
 }

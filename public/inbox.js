@@ -590,13 +590,14 @@ export function createInboxUI({
       c.subject,
       c.status,
       c.assignee,
+      c.assignment,
       state.members,
       c.name,
     ]);
     if (headerKey !== state.headerKey) {
       state.headerKey = headerKey;
       document.querySelector("#chat-head").innerHTML =
-        `<div class="chat-heading"><button class="quiet chat-back" id="back-list" aria-label="返回会话列表">←</button><div><strong>${E(c.name)} <span class="badge neutral">${statusNames[c.status]}</span></strong><button class="quiet small" id="edit-subject" title="编辑主题">${E(c.subject)} ✎</button></div></div><div class="row chat-actions"><button class="quiet" id="show-visitor">访客资料</button><button id="show-assistance">诊断与修复</button>${!c.assignee && c.status !== "closed" ? '<button id="claim-conversation" type="button">接入会话</button>' : ""}<select id="chat-owner" aria-label="分配客服">${options(state.members, c.assignee)}</select><select id="chat-status" aria-label="会话状态">${Object.entries(
+        `<div class="chat-heading"><button class="quiet chat-back" id="back-list" aria-label="返回会话列表">←</button><div><strong>${E(c.name)} <span class="badge neutral">${statusNames[c.status]}</span></strong><button class="quiet small" id="edit-subject" title="编辑主题">${E(c.subject)} ✎</button>${c.assignment ? `<p class="small" aria-live="polite">${E(c.assignment.label)}${c.assignment.waiting ? " · 排队 " + c.assignment.position + " · 等待 " + Math.floor(c.assignment.waitingSeconds / 60) + " 分钟" : ""}</p>` : ""}</div></div><div class="row chat-actions"><button class="quiet" id="show-visitor">访客资料</button><button id="show-assistance">诊断与修复</button><button id="show-handover">交接与结果</button>${!c.assignee && c.status !== "closed" ? '<button id="claim-conversation" type="button">接入会话</button>' : ""}<select id="chat-owner" aria-label="分配客服">${options(state.members, c.assignee)}</select><select id="chat-status" aria-label="会话状态">${Object.entries(
           statusNames,
         )
           .map(
@@ -606,6 +607,44 @@ export function createInboxUI({
           .join(
             "",
           )}</select><button id="follow" class="${c.status === "closed" ? "" : "quiet"}">${c.status === "closed" ? "重新打开" : "结束会话"}</button></div>`;
+      document.querySelector("#show-handover").onclick = safe(async () => {
+        const summary = await api("/conversations/" + c.id + "/handover");
+        modal(
+          "交接摘要与处理结果",
+          `<p>${E(summary.assignment.label)}${summary.assignment.waiting ? " · 排队第 " + summary.assignment.position + " 位 · 等待 " + Math.floor(summary.assignment.waitingSeconds / 60) + " 分钟" : ""}</p>${summary.handoffReason ? `<p>转接原因：${E(summary.handoffReason)}</p>` : ""}<h3>已知设备</h3><p>${E(
+            Object.entries(summary.visitor.device)
+              .map(([k, v]) => k + ": " + v)
+              .join(" · ") || "暂无设备信息",
+          )}</p><h3>最近问题</h3>${summary.questions.map((m) => `<p>${E(m.body)}</p>`).join("")}<h3>有效授权</h3><p>${
+            Object.values(summary.consents)
+              .filter(Boolean)
+              .map(
+                (g) =>
+                  E(g.scope === "query" ? "信息查询" : "修复操作") +
+                  " · " +
+                  E(new Date(g.expires).toLocaleString()),
+              )
+              .join("；") || "暂无有效授权"
+          }</p><h3>诊断与操作</h3>${summary.diagnostics.map((r) => `<p>${E(r.capability)} · ${E(r.status)} · ${E(r.created)}${r.summary ? " · " + E(r.summary) : ""}</p>`).join("")}${summary.repairs.map((r) => `<p>${E(r.operation)} · ${E(r.status)} · ${E(r.result.outcome || "待核实")}${r.result.summary ? " · " + E(r.result.summary) : ""}</p>`).join("")}<label>处理结果<select name="resolved"><option value="">暂不登记</option><option value="yes" ${summary.outcome?.resolved === 1 ? "selected" : ""}>已解决</option><option value="no" ${summary.outcome?.resolved === 0 ? "selected" : ""}>未解决</option></select></label><label><input type="checkbox" name="candidate"> 提交知识改进，交由管理员审核</label><label>问题<input name="question" maxlength="2000" value="${E(summary.questions.at(-1)?.body?.slice(0, 2000) || c.subject)}"></label><label>建议答案<textarea name="answer" maxlength="12000" rows="3"></textarea></label>`,
+          "保存",
+          async (data) => {
+            if (data.resolved)
+              await api("/conversations/" + c.id + "/outcome", {
+                method: "POST",
+                body: JSON.stringify({ resolved: data.resolved === "yes" }),
+              });
+            if (data.candidate)
+              await api("/conversations/" + c.id + "/knowledge-candidate", {
+                method: "POST",
+                body: JSON.stringify({
+                  question: data.question,
+                  answer: data.answer,
+                }),
+              });
+            toast("已保存处理记录");
+          },
+        );
+      });
       document.querySelector("#show-assistance").onclick = () =>
         openAssistance({ api, E, modal, toast, conversationId: c.id });
       document.querySelector("#back-list").onclick = () => {

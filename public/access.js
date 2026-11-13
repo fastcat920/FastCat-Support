@@ -267,7 +267,7 @@ export function createAccessUI({ api, E, modal, toast }) {
         )
         .join(
           "",
-        )}</select></label></div><div class="field"><label>平台智能体<select name="agent_id"><option value="">工作空间默认模型助手</option>${agents.map((a) => `<option value="${a.id}" ${a.id === c.agent_id ? "selected" : ""}>${E(a.name)}</option>`).join("")}</select></label></div><div data-assist>${input("等待人工回复超时（秒；0 表示不回落 AI）", "fallback_timeout", c.fallback_timeout, "number")}</div><p class="small">人工回复、转交和主动接管会停止 AI；工作时间沿用团队管理设置，人工接待模式会在访客发送消息后自动分配在线且未满容量的客服，无人可接待时排队。修改接待策略会终止该平台正在生成的 AI 回复。</p></section><section data-platform-section="appearance"><h3>组件外观与欢迎语</h3><div class="field"><label><input type="checkbox" name="showHandoffButton" ${w.showHandoffButton ? "checked" : ""}> 显示联系人工按钮</label><p class="small">关闭后，访客会话窗口不显示联系人工按钮。</p></div>${input("主题色", "themeColor", w.themeColor, "color")}<div class="field"><label>语言跟随方式<select name="language">${Object.entries(
+        )}</select></label></div><div class="field"><label>平台智能体<select name="agent_id"><option value="">工作空间默认模型助手</option>${agents.map((a) => `<option value="${a.id}" ${a.id === c.agent_id ? "selected" : ""}>${E(a.name)}</option>`).join("")}</select></label></div><div data-assist>${input("等待人工回复超时（秒；0 表示不回落 AI）", "fallback_timeout", c.fallback_timeout, "number")}</div><p class="small">人工回复、转交和主动接管会停止 AI；工作时间沿用团队管理设置，人工接待模式会在访客发送消息后自动分配在线且未满容量的客服，无人可接待时排队。修改接待策略会终止该平台正在生成的 AI 回复。</p></section><section data-platform-section="appearance"><h3>组件外观与欢迎语</h3><div class="field"><label><input type="checkbox" name="showHandoffButton" ${w.showHandoffButton ? "checked" : ""}> 显示联系人工按钮</label><p class="small">关闭后，访客会话窗口不显示联系人工按钮。</p></div><div class="platform-theme-colors">${input("浅色模式主题色", "themeColorLight", w.themeColorLight || w.themeColor, "color")}${input("深色模式主题色", "themeColorDark", w.themeColorDark || w.themeColor, "color")}</div><div class="field"><label>语言跟随方式<select name="language">${Object.entries(
         { auto: "跟随网页 / 客户端", "zh-CN": "简体中文", en: "English" },
       )
         .map(
@@ -285,7 +285,7 @@ export function createAccessUI({ api, E, modal, toast }) {
         )
         .join(
           "",
-        )}</select></label></div>${input("客服入口图标 HTTPS 地址（选填）", "launcherIconUrl", w.launcherIconUrl.startsWith("data:") ? "" : w.launcherIconUrl)}<div class="field"><label>上传客服入口图标<input id="launcher-icon-file" type="file" accept="image/png,image/jpeg,image/webp"></label><div class="upload-image-preview" id="launcher-upload-preview"></div><button type="button" id="clear-launcher-icon">使用默认图标</button><span id="launcher-icon-status" class="small">${w.launcherIconUrl.startsWith("data:") ? "已上传图标" : ""}</span></div><p class="small">留空使用项目图标；上传后统一裁切为 100×100 像素；建议使用透明 PNG 或 WebP 图片。打开会话后显示关闭图标。</p>${input("Logo HTTPS 地址（选填）", "logoUrl", uploadedLogo ? "" : w.logoUrl)}<div class="field"><label>上传聊天窗口 Logo（100×100 像素）<input id="platform-logo-file" type="file" accept="image/png,image/jpeg,image/webp"></label><div class="upload-image-preview" id="logo-upload-preview"></div><button type="button" id="clear-platform-logo">移除 Logo</button><span id="platform-logo-status" class="small">${uploadedLogo ? "已上传 Logo" : ""}</span></div><div class="field"><label>悬浮位置<select name="position">${["bottom-right", "bottom-left", "top-right", "top-left"].map((v, i) => `<option value="${v}" ${v === w.position ? "selected" : ""}>${["右下角", "左下角", "右上角", "左上角"][i]}</option>`).join("")}</select></label></div><div class="field"><label>欢迎语（中文，选填）<textarea name="welcomeMessageZh" rows="3" maxlength="3000">${E(w.welcomeMessageZh || w.welcomeMessage)}</textarea></label></div><div class="field"><label>欢迎语（English，选填）<textarea name="welcomeMessageEn" rows="3" maxlength="3000">${E(w.welcomeMessageEn || "")}</textarea></label></div><p class="small">主题色使用后台配置；语言和明暗模式可跟随网页或客户端。Logo 与位置用于网页组件。</p><iframe id="widget-design-preview" title="聊天组件实时预览" src="/widget?preview=1" sandbox="allow-scripts allow-same-origin allow-forms"></iframe></section><section data-platform-section="integration">${existing ? `<div class="field"><label>接入 Key（网页与 SDK 通用）<input id="shared-platform-key" value="${E(c.public_key)}" minlength="16" maxlength="128" pattern="[a-zA-Z0-9_-]+"></label><button type="button" id="save-shared-platform-key">保存 Key</button><p class="small">重新部署时可填回原 Key。修改后旧 Key 失效，需要同步更新接入端。</p></div>` : ""}${existing ? `<details><summary>嵌入代码与接入标识</summary><pre class="code">${E(code())}</pre><button type="button" id="copy-platform-code">复制接入代码</button>${c.type === "sdk" ? '<p><a href="/fastcat_support_sdk.zip" download>下载 Flutter SDK 与示例</a></p>' : `<p><a href="/embed-demo.html?appKey=${c.public_key}" target="_blank" rel="noopener">打开实际嵌入演示 ↗</a></p><button type="button" id="download-platform-example">下载 HTML 接入示例</button>`}</details>` : '<p class="small">保存后即可复制接入代码；新平台默认停用。</p>'}</section>`,
+        )}</select></label></div>${input("客服入口图标 HTTPS 地址（选填）", "launcherIconUrl", w.launcherIconUrl.startsWith("data:") ? "" : w.launcherIconUrl)}<div class="field"><label>上传客服入口图标<input id="launcher-icon-file" type="file" accept="image/png,image/jpeg,image/webp"></label><div class="upload-image-preview" id="launcher-upload-preview"></div><button type="button" id="clear-launcher-icon">使用默认图标</button><span id="launcher-icon-status" class="small">${w.launcherIconUrl.startsWith("data:") ? "已上传图标" : ""}</span></div><p class="small">留空使用项目图标；上传后统一裁切为 100×100 像素；建议使用透明 PNG 或 WebP 图片。打开会话后显示关闭图标。</p>${input("Logo HTTPS 地址（选填）", "logoUrl", uploadedLogo ? "" : w.logoUrl)}<div class="field"><label>上传聊天窗口 Logo（100×100 像素）<input id="platform-logo-file" type="file" accept="image/png,image/jpeg,image/webp"></label><div class="upload-image-preview" id="logo-upload-preview"></div><button type="button" id="clear-platform-logo">移除 Logo</button><span id="platform-logo-status" class="small">${uploadedLogo ? "已上传 Logo" : ""}</span></div><div class="field"><label>悬浮位置<select name="position">${["bottom-right", "bottom-left", "top-right", "top-left"].map((v, i) => `<option value="${v}" ${v === w.position ? "selected" : ""}>${["右下角", "左下角", "右上角", "左上角"][i]}</option>`).join("")}</select></label></div><div class="field"><label>欢迎语（中文，选填）<textarea name="welcomeMessageZh" rows="3" maxlength="3000">${E(w.welcomeMessageZh || w.welcomeMessage)}</textarea></label></div><div class="field"><label>欢迎语（English，选填）<textarea name="welcomeMessageEn" rows="3" maxlength="3000">${E(w.welcomeMessageEn || "")}</textarea></label></div><p class="small">主题色按浅色／深色模式分别配置；选择“跟随”时根据网页或客户端的明暗模式切换。Logo 与位置用于网页组件。</p><iframe id="widget-design-preview" title="聊天组件实时预览" src="/widget?preview=1" sandbox="allow-scripts allow-same-origin allow-forms"></iframe></section><section data-platform-section="integration">${existing ? `<div class="field"><label>接入 Key（网页与 SDK 通用）<input id="shared-platform-key" value="${E(c.public_key)}" minlength="16" maxlength="128" pattern="[a-zA-Z0-9_-]+"></label><button type="button" id="save-shared-platform-key">保存 Key</button><p class="small">重新部署时可填回原 Key。修改后旧 Key 失效，需要同步更新接入端。</p></div>` : ""}${existing ? `<details><summary>嵌入代码与接入标识</summary><pre class="code">${E(code())}</pre><button type="button" id="copy-platform-code">复制接入代码</button>${c.type === "sdk" ? '<p><a href="/fastcat_support_sdk.zip" download>下载 Flutter SDK 与示例</a></p>' : `<p><a href="/embed-demo.html?appKey=${c.public_key}" target="_blank" rel="noopener">打开实际嵌入演示 ↗</a></p><button type="button" id="download-platform-example">下载 HTML 接入示例</button>`}</details>` : '<p class="small">保存后即可复制接入代码；新平台默认停用。</p>'}</section>`,
       "保存",
       async (f) => {
         const payload = {
@@ -298,7 +298,9 @@ export function createAccessUI({ api, E, modal, toast }) {
             .map((x) => x.trim())
             .filter(Boolean),
           widget: {
-            themeColor: f.themeColor,
+            themeColor: f.themeColorLight,
+            themeColorLight: f.themeColorLight,
+            themeColorDark: f.themeColorDark,
             language: f.language,
             theme: f.theme,
             position: f.position,
@@ -515,9 +517,17 @@ export function createAccessUI({ api, E, modal, toast }) {
       o.querySelector(".platform-launcher-preview").hidden = !isWeb;
       form.elements.allowLocalFilePreview.disabled = !isWeb;
       const preview = o.querySelector("#widget-design-preview");
-      form.elements.themeColor.parentElement.querySelector(
-        "output",
-      ).textContent = form.elements.themeColor.value.toUpperCase();
+      for (const name of ["themeColorLight", "themeColorDark"])
+        form.elements[name].parentElement.querySelector("output").textContent =
+          form.elements[name].value.toUpperCase();
+      const previewMode =
+        form.elements.theme.value === "auto"
+          ? document.documentElement.dataset.theme || "light"
+          : form.elements.theme.value;
+      const previewColor =
+        form.elements[
+          previewMode === "dark" ? "themeColorDark" : "themeColorLight"
+        ].value;
       const logoURL = form.elements.logoUrl.value.trim() || uploadedLogo;
       preview.contentWindow?.postMessage(
         {
@@ -525,7 +535,9 @@ export function createAccessUI({ api, E, modal, toast }) {
           config: {
             showHandoffButton: form.elements.showHandoffButton.checked,
 
-            themeColor: form.elements.themeColor.value,
+            themeColor: form.elements.themeColorLight.value,
+            themeColorLight: form.elements.themeColorLight.value,
+            themeColorDark: form.elements.themeColorDark.value,
             welcomeMessageZh: form.elements.welcomeMessageZh.value,
             welcomeMessageEn: form.elements.welcomeMessageEn.value,
             logoUrl: logoURL,
@@ -550,14 +562,10 @@ export function createAccessUI({ api, E, modal, toast }) {
         image.src = icon;
         launcher.append(image);
       } else launcher.textContent = "F";
-      launcher.style.background = form.elements.themeColor.value;
+      launcher.style.background = previewColor;
       const rgb = [1, 3, 5]
         .map(
-          (index) =>
-            parseInt(
-              form.elements.themeColor.value.slice(index, index + 2),
-              16,
-            ) / 255,
+          (index) => parseInt(previewColor.slice(index, index + 2), 16) / 255,
         )
         .map((value) =>
           value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4,

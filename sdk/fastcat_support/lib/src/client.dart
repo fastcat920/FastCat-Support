@@ -13,6 +13,13 @@ abstract interface class FastCatSessionStore {
   Future<void> delete(String key);
 }
 
+/// Short-lived HS256 proof signed by the host BACKEND, never by the app.
+class FastCatIdentityProof {
+  final String deviceId;
+  final String token;
+  const FastCatIdentityProof({required this.deviceId, required this.token});
+}
+
 class FastCatException implements Exception {
   final int status;
   final String message;
@@ -186,11 +193,14 @@ class FastCatClient {
   String? get conversationId => _session?['id'] as String?;
   bool get hasSession => _session != null;
 
+  final Future<FastCatIdentityProof> Function()? identityProvider;
+
   FastCatClient(
       {required this.baseUrl,
       required this.appKey,
       this.store,
       this.sessionScope,
+      this.identityProvider,
       http.Client? client})
       : _http = client ?? http.Client() {
     if ((!['https'].contains(baseUrl.scheme) &&
@@ -265,6 +275,11 @@ class FastCatClient {
             ['auto', 'zh-CN', 'en'].contains(w['language'])) &&
         (w['theme'] == null ||
             ['auto', 'light', 'dark'].contains(w['theme'])) &&
+        ['themeColorLight', 'themeColorDark'].every((key) =>
+            w[key] == null ||
+            w[key] == '' ||
+            (w[key] is String &&
+                RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(w[key]))) &&
         (w['showHandoffButton'] == null || w['showHandoffButton'] is bool) &&
         ['welcomeMessage', 'welcomeMessageZh', 'welcomeMessageEn']
             .every((key) => w[key] == null || w[key] is String);
@@ -317,12 +332,21 @@ class FastCatClient {
   Future<void> start(
       {required String email,
       String? name,
-      Map<String, dynamic> profile = const {}}) async {
+      Map<String, dynamic> profile = const {},
+      String? deviceId,
+      String? identityToken}) async {
     if (hasSession)
       throw StateError(
           'A session already exists; reset explicitly to start a new conversation');
-    final result = await _json('/start',
-        method: 'POST', body: {'email': email, 'profile': profile});
+    final proof = identityToken == null ? await identityProvider?.call() : null;
+    deviceId ??= proof?.deviceId;
+    identityToken ??= proof?.token;
+    final result = await _json('/start', method: 'POST', body: {
+      'email': email,
+      'profile': profile,
+      if (deviceId != null) 'deviceId': deviceId,
+      if (identityToken != null) 'identityToken': identityToken
+    });
     _session = {'id': result['id'], 'token': result['token'], 'appKey': appKey};
     await store?.write(_storeKey, jsonEncode(_session));
   }
@@ -357,6 +381,14 @@ class FastCatClient {
       }
       rethrow;
     }
+  }
+
+  /// Revoke server credentials as well as local state (e.g. account logout).
+  Future<void> revokeSession() async {
+    _requireSession();
+    await _json('/session',
+        method: 'POST', body: {'id': conversationId, 'action': 'revoke'});
+    await reset();
   }
 
   Future<void> reset() async {

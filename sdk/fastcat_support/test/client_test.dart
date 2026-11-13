@@ -421,4 +421,33 @@ void main() {
     await b.cancel();
     client.close();
   });
+  test(
+      'identity provider is forwarded only on start and revoke clears stored credentials',
+      () async {
+    final store = MemoryStore();
+    final bodies = <String, Map<String, dynamic>>{};
+    final client = FastCatClient(
+        baseUrl: Uri.parse('https://identity.example.test'),
+        appKey: 'public-key',
+        store: store,
+        identityProvider: () async => const FastCatIdentityProof(
+            deviceId: 'installation_0001', token: 'signed-proof'),
+        client: MockClient((req) async {
+          bodies[req.url.path] = jsonDecode(req.body) as Map<String, dynamic>;
+          return http.Response(
+              req.url.path.endsWith('/start')
+                  ? '{"id":"conversation","token":"visitor-secret"}'
+                  : '{"ok":true}',
+              200);
+        }));
+    await client.start(email: 'user@example.test');
+    expect(bodies['/api/widget/start']!['deviceId'], 'installation_0001');
+    expect(bodies['/api/widget/start']!['identityToken'], 'signed-proof');
+    expect(client.hasSession, true);
+    await client.revokeSession();
+    expect(bodies['/api/widget/session']!['action'], 'revoke');
+    expect(client.hasSession, false);
+    expect(store.values, isEmpty);
+    client.close();
+  });
 }

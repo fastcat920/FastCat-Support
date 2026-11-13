@@ -71,3 +71,24 @@ test("UI localization preserves dynamic names and only translates known status m
     "Select conversation: Customer 123",
   );
 });
+
+test("light and dark accents follow effective brightness with legacy fallback", () => {
+  const config = {
+    themeColor: "#123456",
+    themeColorLight: "#336699",
+    themeColorDark: "#aabbcc",
+  };
+  assert.equal(resolveAppearance(config, { theme: "dark" }).color, "#aabbcc");
+  assert.equal(resolveAppearance(config, { theme: "light" }).color, "#336699");
+  assert.equal(
+    resolveAppearance({ ...config, theme: "light" }, { theme: "dark" }).color,
+    "#336699",
+  );
+  assert.equal(
+    resolveAppearance(
+      { ...config, themeColorDark: "invalid" },
+      { theme: "dark" },
+    ).color,
+    "#123456",
+  );
+});

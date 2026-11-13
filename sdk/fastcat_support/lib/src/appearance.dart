@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 
 const defaultSupportColor = Color(0xff5b4ee8);
-Color supportColor(Map<String, dynamic> config) {
-  final raw = (config['widget'] as Map?)?['themeColor'];
+Color supportColor(Map<String, dynamic> config,
+    {Brightness brightness = Brightness.light}) {
+  final appearance = config['widget'] as Map? ?? const {};
+  final dark = appearance['theme'] == 'dark' ||
+      (appearance['theme'] != 'light' && brightness == Brightness.dark);
+  final selected = appearance[dark ? 'themeColorDark' : 'themeColorLight'];
+  final raw =
+      selected is String && RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(selected)
+          ? selected
+          : appearance['themeColor'];
   return raw is String && RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(raw)
       ? Color(0xff000000 | int.parse(raw.substring(1), radix: 16))
       : defaultSupportColor;

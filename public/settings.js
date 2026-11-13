@@ -1,3 +1,4 @@
+import { renderOperations } from "./operations.js";
 export function createSettingsUI({
   api,
   E,
@@ -24,9 +25,17 @@ export function createSettingsUI({
       ["general", "通用"],
       ["notifications", "消息通知"],
       ["about", "关于"],
+      ...(me.role === "admin"
+        ? [
+            ["operations", "运行状态"],
+            ["backups", "备份恢复"],
+            ["quality", "服务质量"],
+            ["improvements", "知识改进"],
+          ]
+        : []),
     ];
     document.querySelector("#view").innerHTML =
-      `<div class="content"><div class="tabs">${tabs.map(([id, name]) => `<button data-settings="${id}" class="${id === section ? "active" : ""}">${name}</button>`).join("")}</div><section id="settings-panel" class="panel"></section></div>`;
+      `<div class="content"><div class="tabs settings-tabs">${tabs.map(([id, name]) => `<button data-settings="${id}" class="${id === section ? "active" : ""}">${name}</button>`).join("")}</div><section id="settings-panel" class="panel"></section></div>`;
     document.querySelectorAll("[data-settings]").forEach(
       (b) =>
         (b.onclick = safe(async () => {
@@ -39,6 +48,12 @@ export function createSettingsUI({
         })),
     );
     const el = document.querySelector("#settings-panel");
+    if (
+      ["operations", "backups", "quality", "improvements"].includes(section)
+    ) {
+      el.classList.add("operations-panel");
+      return renderOperations(el, { api, E, toast }, section);
+    }
     if (section === "profile") {
       el.innerHTML = `<h2>个人资料</h2><p>${E(me.email)} · ${me.role === "admin" ? "管理员" : "客服"}</p><form><div class="profile-avatar"><div class="avatar">${me.avatar ? `<img src="/api/profile/avatar" alt="个人头像">` : E(me.name[0])}</div><label>上传头像<input id="profile-avatar" type="file" accept="image/png,image/jpeg,image/webp"></label><span class="small">自动裁切为 100×100 像素，最大 5 MB</span></div><div class="field"><label>姓名<input name="name" maxlength="100" required value="${E(me.name)}"></label></div><button class="primary">保存资料</button></form><h3>在线状态</h3><p>状态不会影响已有会话。</p><select id="profile-presence" aria-label="在线状态">${Object.entries(
         { available: "在线", away: "忙碌", offline: "离线" },

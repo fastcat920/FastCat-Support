@@ -147,7 +147,12 @@
     error.hidden = !opened || !unavailable;
     error.style.display = error.hidden ? "none" : "block";
     frame.contentWindow?.postMessage({ ...h, opened }, base.origin);
-    const color = config.themeColor;
+    const theme = ["dark", "light"].includes(config.theme)
+      ? config.theme
+      : h.theme;
+    const color =
+      (theme === "dark" ? config.themeColorDark : config.themeColorLight) ||
+      config.themeColor;
     if (/^#[0-9a-f]{6}$/i.test(color || "")) {
       const rgb = [1, 3, 5]
         .map((i) => parseInt(color.slice(i, i + 2), 16) / 255)

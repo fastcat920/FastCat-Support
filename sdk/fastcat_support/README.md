@@ -1,6 +1,6 @@
 # FastCat Support · Flutter / Dart SDK
 
-SDK 版本 0.29.1，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
+SDK 版本 0.30.0，连接自建 FastCat Support 0.9+，支持 Flutter 原生聊天界面与独立 Dart 访客客户端。用户从应用咨询；Telegram 仅作为客服的人工回复桥接。
 
 ## 安装与连接
 
@@ -129,17 +129,16 @@ FastCatChat 与可独立使用的 FastCatMessageBody 支持 Markdown、rich_text
 
 邮箱及客户端资料属于访客提供的信息，不作为已验证身份，也不会按邮箱合并不同会话。旧版仅传姓名的 SDK 调用需更新为传入邮箱。
 
-
 ## 0.18：内置 Flutter 聊天界面
 
 SDK 使用 Flutter 组件绘制聊天界面，不使用 WebView。客户端直接调用 `FastCatChat(client: client)`，无需自行绘制。附件选择和保存通过宿主回调接入。布局变更需要升级 SDK 并重新发布客户端。
-
 
 ## 0.19：网页风格与消息通知
 
 保持 Flutter 原生组件。采用紧凑标题栏、客服头像和名称、气泡内时间与已读状态、圆角输入区及图标操作。中文/英文标题和联系人工按钮开关读取后台配置。
 
 客户端可订阅：
+
 ```dart
 final unreadSubscription = client.unreadCountStream.listen((count) {
   // 更新宿主角标
@@ -153,7 +152,6 @@ final monitor = client.watch().listen((page) {});
 ```
 
 初次同步历史不会触发新消息提示音，消息按 seq 去重。未读数随已读游标更新；前台采用 SSE，后台系统通知需要宿主接入 APNs/FCM。系统声音受静音模式及平台行为影响。Flutter 与网页共用后台配置，但分别绘制，字体、系统控件和平台附件选择器存在差异，尚需真机视觉验收。
-
 
 ## 0.20：与网页统一的原生 UI
 
@@ -223,3 +221,26 @@ message order, server timestamps and cursors remain unchanged. Chinese separator
 use year/month/day, English separators use month name/day/year. Invalid dates do
 not produce a separator. Web chat also groups by local dates and follows its UI
 language when formatting separators.
+
+## 0.30：双主题色与签名会话复用
+
+后台支持分别配置浅色与深色主题色。auto 模式跟随宿主 ThemeData，light／dark 固定模式按对应颜色显示；缺少新字段时回退到原 themeColor。
+
+服务端会话复用需要宿主后端签发短期 HS256 凭据，不能在 APP 中保存签名密钥。可以传入：
+
+```dart
+final support = FastCatSupport(
+  baseUrl: Uri.parse('https://support.example.com'),
+  appKey: 'your-public-app-key',
+  user: const FastCatUser(id: 'account-id', email: 'user@example.com'),
+  identityProvider: () async {
+    // 调用宿主自己的已登录 API，验证账户及设备归属后签发。
+    final result = await hostApi.fetchSupportIdentity();
+    return FastCatIdentityProof(deviceId: result.installationId, token: result.jwt);
+  },
+);
+```
+
+相同用户、安装标识和平台实例可以恢复已有会话，不同用户或设备隔离。没有 identityProvider 的旧接入仍使用本地凭据恢复。新建会话时调用 provider；宿主需要保证 proof 中的 appKey、用户和设备与当前会话一致。退出账号可调用 `support.client.revokeSession()` 撤销服务端凭据；若离线撤销失败，不可假定服务端已经失效。
+
+后端配置、JWT 声明、备份和运维接口见仓库 `docs/OPERATIONS.md`。

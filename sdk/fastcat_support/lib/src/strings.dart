@@ -27,7 +27,11 @@ String supportError(String error, bool english) {
       .hasMatch(error)) {
     return t('请选择不超过 8 MB 的非空文件', 'Choose a non-empty file up to 8 MB');
   }
-  if (RegExp(r'401|403|unauthorized|expired|失效', caseSensitive: false)
+  if (error.contains('上传额度')) {
+    return t('今日附件上传额度已用完，请稍后重试',
+        "Today's upload quota has been reached. Try again later.");
+  }
+  if (RegExp(r'401|403|unauthorized|expired|失效|已过期|凭据无效', caseSensitive: false)
       .hasMatch(error)) {
     return t('会话或授权已失效，请重新连接后重试',
         'Session or permission expired. Reconnect and try again.');

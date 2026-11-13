@@ -109,7 +109,9 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
               : _assigned
                   ? _t('人工客服接待中', 'Staff connected')
                   : _t('等待客服接待', 'Waiting for support');
-  Color _primary = defaultSupportColor;
+  Map<String, dynamic> _colorConfiguration = {};
+  Color get _primary => supportColor(_colorConfiguration,
+      brightness: Theme.of(context).brightness);
   String? _themeMode, _language, _welcomeZh, _welcomeEn;
   bool _showHandoff = true, _sound = true;
   final _avatarBytes = <String, Uint8List>{};
@@ -123,7 +125,7 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
     final revision = ++_appearanceRevision;
     void apply(Map<String, dynamic> config) {
       final firstPaint = !_appearanceReady;
-      _primary = supportColor(config);
+      _colorConfiguration = config;
       final appearance = config['widget'] as Map? ?? const {};
       _themeMode = appearance['theme'] as String?;
       _language = appearance['language'] as String?;
@@ -350,7 +352,7 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
       _aiAvatar = "";
       _appearanceReady = false;
       _appearanceError = null;
-      _primary = defaultSupportColor;
+      _colorConfiguration = {};
       _themeMode = _language = _welcomeZh = _welcomeEn = null;
       _peerReadSeq = 0;
       _loadAppearance();

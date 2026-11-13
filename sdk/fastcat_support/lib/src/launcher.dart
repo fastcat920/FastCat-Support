@@ -32,13 +32,15 @@ class _FastCatLauncherState extends State<FastCatLauncher> {
   StreamSubscription<Map<String, dynamic>>? _pages;
   StreamSubscription<int>? _reads;
   bool _opening = false;
-  Color _primary = defaultSupportColor;
+  Map<String, dynamic> _colorConfiguration = {};
+  Color get _primary => supportColor(_colorConfiguration,
+      brightness: Theme.of(context).brightness);
   int _appearanceRevision = 0;
   void _loadAppearance() {
     final revision = ++_appearanceRevision;
     widget.client.configuration().then((config) {
       if (mounted && revision == _appearanceRevision)
-        setState(() => _primary = supportColor(config));
+        setState(() => _colorConfiguration = config);
     }).catchError((Object _) {});
   }
 
@@ -73,7 +75,7 @@ class _FastCatLauncherState extends State<FastCatLauncher> {
   void didUpdateWidget(covariant FastCatLauncher old) {
     super.didUpdateWidget(old);
     if (old.client != widget.client) {
-      _primary = defaultSupportColor;
+      _colorConfiguration = {};
       _loadAppearance();
       _pages?.cancel();
       _reads?.cancel();

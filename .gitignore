@@ -33,3 +33,6 @@ secrets/
 # Python tooling caches
 __pycache__/
 *.pyc
+
+.fastcat-dependencies.sha256
+backups/

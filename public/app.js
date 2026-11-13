@@ -142,6 +142,22 @@ window.addEventListener("unhandledrejection", (event) => {
   if (event.reason?.name !== "AbortError")
     toast("操作未完成：" + (event.reason?.message || "请重试"));
 });
+let operationsTimer,
+  lastOperationalAlert = "";
+async function checkOperationalAlerts() {
+  if (me?.role !== "admin" || document.visibilityState === "hidden") return;
+  try {
+    const result = await api("/operations/alerts"),
+      alert = result.backup;
+    if (alert?.status !== "failed") return;
+    const key = me.id + ":" + alert.id;
+    if (lastOperationalAlert === key) return;
+    lastOperationalAlert = key;
+    toast("备份失败，请到设置中的备份恢复页面检查");
+  } catch {
+    /* Background alerts must not interrupt an active conversation. */
+  }
+}
 function bindError(fn) {
   return async (e) => {
     try {
@@ -207,6 +223,11 @@ async function boot() {
     );
     shell();
     await notifications.init();
+    clearInterval(operationsTimer);
+    if (me.role === "admin") {
+      checkOperationalAlerts();
+      operationsTimer = setInterval(checkOperationalAlerts, 60000);
+    }
     events?.close();
     events = new EventSource("/api/events");
     events.onopen = () => notifications.poll();
@@ -406,6 +427,8 @@ function shell() {
       toast("本地队列清理失败，请清除本站点数据"),
     );
     await api("/logout", { method: "POST" });
+    clearInterval(operationsTimer);
+    lastOperationalAlert = "";
     me = null;
     drafts.clear();
     events?.close();

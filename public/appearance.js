@@ -2,19 +2,26 @@ import { normalizeLanguage } from "./i18n.js";
 export function resolveAppearance(config = {}, host = {}, system = {}) {
   const validTheme = (value) => ["light", "dark"].includes(value);
   const color = (value) => /^#[0-9a-f]{6}$/i.test(value || "");
+  const theme = validTheme(config.theme)
+    ? config.theme
+    : validTheme(host.theme)
+      ? host.theme
+      : system.dark
+        ? "dark"
+        : "light";
+  const modeColor =
+    theme === "dark" ? config.themeColorDark : config.themeColorLight;
   return {
     language:
       config.language && config.language !== "auto"
         ? normalizeLanguage(config.language)
         : normalizeLanguage(host.language || system.language),
-    theme: validTheme(config.theme)
-      ? config.theme
-      : validTheme(host.theme)
-        ? host.theme
-        : system.dark
-          ? "dark"
-          : "light",
-    color: color(config.themeColor) ? config.themeColor : "#5b4ee8",
+    theme,
+    color: color(modeColor)
+      ? modeColor
+      : color(config.themeColor)
+        ? config.themeColor
+        : "#5b4ee8",
   };
 }
 export function applyAppearance({ theme, color }) {

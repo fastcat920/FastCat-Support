@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   readFileSync,
@@ -23,14 +24,29 @@ export function command(exe, args, cwd, { capture = false } = {}) {
     );
   return result.stdout?.trim() || "";
 }
-export async function healthy(port) {
+export async function healthy(port, revision) {
   for (let attempt = 0; attempt < 15; attempt++) {
     const ok = await new Promise((resolve) => {
       const req = http.get(
-        { host: "127.0.0.1", port, path: "/api/setup", timeout: 2000 },
+        { host: "127.0.0.1", port, path: "/api/health/ready", timeout: 2000 },
         (res) => {
-          res.resume();
-          resolve(res.statusCode === 200);
+          let raw = "";
+          res.on("data", (chunk) => {
+            if (raw.length < 16384) raw += chunk;
+          });
+          res.on("end", () => {
+            try {
+              const data = JSON.parse(raw);
+              resolve(
+                res.statusCode === 200 &&
+                  data.ready === true &&
+                  (!revision || data.revision === revision),
+              );
+            } catch {
+              resolve(false);
+            }
+          });
+          res.on("error", () => resolve(false));
         },
       );
       req.on("timeout", () => req.destroy());
@@ -89,14 +105,36 @@ export async function update(
     root,
     { capture: true },
   );
-  if (changed || !existsSync(resolve(root, "node_modules"))) {
+  const marker = resolve(root, ".fastcat-dependencies.sha256");
+  const files = ["package.json", "package-lock.json"];
+  const fingerprint = createHash("sha256")
+    .update(
+      files
+        .map((file) =>
+          existsSync(resolve(root, file))
+            ? readFileSync(resolve(root, file), "utf8")
+            : "",
+        )
+        .join("\0"),
+    )
+    .digest("hex");
+  const installed = existsSync(marker)
+    ? readFileSync(marker, "utf8").trim()
+    : "";
+  if (
+    changed ||
+    !existsSync(resolve(root, "node_modules")) ||
+    (existsSync(resolve(root, "package.json")) && installed !== fingerprint)
+  ) {
     console.log("安装生产依赖…");
     const npm = process.env.npm_execpath;
     if (!npm) throw Error("请通过 npm run update 执行");
     run(process.execPath, [npm, "ci", "--omit=dev"], root);
+    writeFileSync(marker, fingerprint, { mode: 0o600 });
   }
+  const revision = run("git", ["rev-parse", "HEAD"], root, { capture: true });
   run(python, [bt, "restart", name, root], root);
-  await checkHealth(port);
+  await checkHealth(port, revision);
   console.log("更新完成，服务检查通过");
 }
 if (

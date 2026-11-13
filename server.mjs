@@ -1,3 +1,12 @@
+import { createOperations } from "./lib/operations.mjs";
+import {
+  createLimiter,
+  clientAddress,
+  createPresence,
+  createVisitorSessions,
+  requestLog,
+} from "./lib/runtime-guards.mjs";
+import { execFileSync } from "node:child_process";
 import { createUserPush } from "./lib/user-push.mjs";
 import { createPush } from "./lib/push.mjs";
 import { visitorAIContext } from "./lib/visitor-ai-context.mjs";
@@ -53,6 +62,7 @@ import {
   handleInvite,
   listConversations,
   assertConversationAccess,
+  HttpError,
   updateConversation,
   insertStaffMessage,
 } from "./lib/management.mjs";
@@ -121,6 +131,25 @@ migrateReceipts(db);
 migrateKnowledgeJobs(db);
 migrateChannels(db);
 migrateTelegram(db);
+const presence = createPresence(db);
+const visitorSessions = createVisitorSessions(db);
+const limit = createLimiter();
+db.exec(
+  "CREATE TABLE IF NOT EXISTS upload_quotas(actor TEXT NOT NULL,day TEXT NOT NULL,bytes INTEGER NOT NULL,PRIMARY KEY(actor,day))",
+);
+function uploadQuota(actor, bytes) {
+  const day = new Date().toISOString().slice(0, 10);
+  const used =
+    db
+      .prepare("SELECT bytes FROM upload_quotas WHERE actor=? AND day=?")
+      .get(actor, day)?.bytes || 0;
+  if (used + bytes > (Number(process.env.UPLOAD_DAILY_MB) || 100) * 1048576)
+    throw new HttpError(429, "今日附件上传额度已用完，请稍后重试");
+  db.prepare(
+    "INSERT INTO upload_quotas VALUES(?,?,?) ON CONFLICT(actor,day) DO UPDATE SET bytes=bytes+excluded.bytes",
+  ).run(actor, day, bytes);
+  db.prepare("DELETE FROM upload_quotas WHERE day<?").run(day);
+}
 const channels = createChannels(db, {
   onChange: (id) => service?.policyChanged(id),
 });
@@ -175,8 +204,20 @@ let service, telegram;
 const push = createPush(db);
 const userPush = createUserPush(db);
 setInterval(() => {
-  userPush.drain().catch(() => console.error("User push worker failed"));
-  push.drain().catch(() => console.error("Push worker failed"));
+  for (const [name, worker] of [
+    ["user_push", userPush],
+    ["staff_push", push],
+  ])
+    worker.drain().catch((error) => {
+      requestLog("worker.error", {
+        worker: name,
+        type: error.name,
+        code: error.code || "WORKER_FAILED",
+      });
+      try {
+        operations.record(name, "failed");
+      } catch {}
+    });
 }, 5000).unref();
 const peers = new Set();
 const visitorPeers = new Map();
@@ -193,9 +234,11 @@ function broadcast(conversationId) {
   }
   service?.observe(conversationId);
   telegram?.observe(conversationId);
-  for (const p of peers) p.write("data: update\n\n");
-  for (const peer of visitorPeers.get(conversationId) || [])
-    peer.write("data: update\n\n");
+  for (const peer of [...peers, ...(visitorPeers.get(conversationId) || [])]) {
+    if (peer.destroyed || peer.writableEnded) continue;
+    if (peer.writableLength > 65536) peer.end();
+    else peer.write("data: update\n\n");
+  }
 }
 function send(res, status, data) {
   res.writeHead(status, {
@@ -208,9 +251,13 @@ async function body(req) {
   let s = "";
   for await (const c of req) {
     s += c;
-    if (s.length > 1048576) throw Error("请求内容过大");
+    if (Buffer.byteLength(s) > 1048576)
+      throw new HttpError(413, "请求内容过大");
   }
-  return s ? JSON.parse(s) : {};
+  const value = s ? JSON.parse(s) : {};
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new HttpError(400, "请求内容必须为对象");
+  return value;
 }
 function user(req) {
   const t = (req.headers.cookie || "")
@@ -303,6 +350,7 @@ service = createService({
   broadcast,
   completion: (options) => agentRunner.stream(options),
   channelPolicy: (id) => channels.policy(id),
+  isOnline: (id) => presence.online(id),
   knowledgeLookup: (q, c, l, options) => retrieval.lookup(q, c, l, options),
 });
 const knowledgeJobs = createKnowledgeJobs({ db, indexKnowledge, broadcast });
@@ -311,7 +359,42 @@ telegram = createTelegram({
   broadcast,
   keyPath: (process.env.DB_PATH || resolve(root, "data/support.db")) + ".key",
 });
+let revision = "unknown";
+try {
+  revision = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+} catch {}
+const version = JSON.parse(
+  readFileSync(resolve(root, "package.json"), "utf8"),
+).version;
+const operations = createOperations({
+  db,
+  dbPath: process.env.DB_PATH || resolve(root, "data/support.db"),
+  revision,
+  version,
+  push,
+  userPush,
+  service,
+  presence,
+  assistance,
+  broadcast,
+});
 const server = http.createServer(async (req, res) => {
+  const requestId = randomUUID(),
+    started = Date.now();
+  res.setHeader("X-Request-ID", requestId);
+  if (req.url?.startsWith("/api/") && !req.url.startsWith("/api/health/"))
+    res.on("finish", () =>
+      requestLog("http", {
+        requestId,
+        method: req.method,
+        status: res.statusCode,
+        durationMs: Date.now() - started,
+      }),
+    );
   try {
     const url = new URL(req.url, "http://localhost"),
       p = url.pathname,
@@ -322,6 +405,22 @@ const server = http.createServer(async (req, res) => {
       "Content-Security-Policy",
       "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' blob: data:; frame-ancestors 'self'",
     );
+    const ip = clientAddress(req);
+    if (p.startsWith("/api/health/")) limit("health:" + ip, 600);
+    if (p === "/api/health/live" && method === "GET")
+      return send(res, 200, { alive: true });
+    if (p === "/api/health/ready" && method === "GET") {
+      const ready = operations.ready();
+      return send(res, ready ? 200 : 503, { ready, revision, version });
+    }
+    if (p.startsWith("/api/"))
+      limit("ip:" + ip, Number(process.env.API_RATE_PER_MINUTE) || 1200);
+    if (["/api/login", "/api/setup"].includes(p) && method === "POST")
+      limit("login:" + ip, 20, 900000);
+    if (p === "/api/widget/start" && method === "POST")
+      limit("start:" + ip, 60);
+    if (method === "POST" && /\/(messages|attachments)$/.test(p))
+      limit("write:" + (req.headers.authorization || ip), 120);
     const visitorCors = channels.cors(req, res, url);
     if (method === "OPTIONS" && p.startsWith("/api/widget")) {
       res.writeHead(204);
@@ -393,6 +492,7 @@ const server = http.createServer(async (req, res) => {
         if (
           !u ||
           typeof b.password !== "string" ||
+          b.password.length > 256 ||
           !verify(b.password, u.password)
         )
           return send(res, 401, { error: "邮箱或密码错误" });
@@ -403,6 +503,7 @@ const server = http.createServer(async (req, res) => {
         u.id,
         Date.now() + 86400000,
       );
+      presence.touch(u.id, token);
       res.setHeader(
         "Set-Cookie",
         `fc_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${process.env.COOKIE_SECURE === "1" ? "; Secure" : ""}`,
@@ -436,29 +537,55 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/widget/start" && method === "POST") {
         const channel = channels.authorize(req, url);
         const identity = visitorIdentity(b);
+        const binding = visitorSessions.binding(b, channel);
+        const existing = visitorSessions.find(binding);
+        if (existing) {
+          db.prepare(
+            "UPDATE visitors SET email=?,name=?,profile=?,profile_revision=profile_revision+1 WHERE id=?",
+          ).run(
+            identity.email,
+            identity.name,
+            JSON.stringify(identity.profile),
+            existing.visitor_id,
+          );
+          return send(res, 200, {
+            id: existing.id,
+            token: existing.token,
+            appKey: channel.public_key,
+            resumed: true,
+          });
+        }
         const v = uid(),
           c = uid(),
           token = randomBytes(32).toString("hex"),
           t = now();
-        db.prepare(
-          "INSERT INTO visitors(id,name,email,token,profile) VALUES(?,?,?,?,?)",
-        ).run(
-          v,
-          identity.name,
-          identity.email,
-          token,
-          JSON.stringify(identity.profile),
-        );
-        db.prepare(
-          "INSERT INTO conversations(id,visitor_id,subject,created,updated,channel_id) VALUES(?,?,?,?,?,?)",
-        ).run(
-          c,
-          v,
-          channel.type === "sdk" ? "客户端咨询" : "网站咨询",
-          t,
-          t,
-          channel.id,
-        );
+        db.exec("SAVEPOINT widget_start");
+        try {
+          db.prepare(
+            "INSERT INTO visitors(id,name,email,token,profile) VALUES(?,?,?,?,?)",
+          ).run(
+            v,
+            identity.name,
+            identity.email,
+            token,
+            JSON.stringify(identity.profile),
+          );
+          db.prepare(
+            "INSERT INTO conversations(id,visitor_id,subject,created,updated,channel_id) VALUES(?,?,?,?,?,?)",
+          ).run(
+            c,
+            v,
+            channel.type === "sdk" ? "客户端咨询" : "网站咨询",
+            t,
+            t,
+            channel.id,
+          );
+          visitorSessions.save(binding, c);
+          db.exec("RELEASE widget_start");
+        } catch (error) {
+          db.exec("ROLLBACK TO widget_start; RELEASE widget_start");
+          throw error;
+        }
         service.onStart(c);
         broadcast(c);
         return send(res, 201, { id: c, token, appKey: channel.public_key });
@@ -473,6 +600,44 @@ const server = http.createServer(async (req, res) => {
       )
         return send(res, 403, { error: "会话凭据无效" });
       channels.authorize(req, url, c);
+      if (p === "/api/widget/session" && method === "POST") {
+        if (b.action !== "revoke") throw new HttpError(400, "会话操作无效");
+        db.exec("SAVEPOINT revoke_visitor_session");
+        try {
+          db.prepare("UPDATE visitors SET token=? WHERE id=?").run(
+            randomBytes(32).toString("hex"),
+            c.visitor_id,
+          );
+          // Keep verified account/device history; restoring it requires a fresh
+          // signed proof and returns the rotated credential.
+          db.prepare(
+            "UPDATE assistance_consents SET revoked=? WHERE conversation_id=? AND revoked IS NULL",
+          ).run(Date.now(), c.id);
+          db.prepare(
+            "UPDATE assistance_requests SET status='revoked',finished=? WHERE conversation_id=? AND status IN ('pending','running')",
+          ).run(Date.now(), c.id);
+          db.prepare(
+            "UPDATE assistance_repairs SET status='revoked',finished=? WHERE conversation_id=? AND status='pending'",
+          ).run(Date.now(), c.id);
+          db.prepare(
+            "UPDATE assistance_repairs SET status='unknown' WHERE conversation_id=? AND status='running'",
+          ).run(c.id);
+          db.prepare(
+            "DELETE FROM assistance_devices WHERE conversation_id=?",
+          ).run(c.id);
+          db.prepare(
+            "UPDATE user_push_devices SET enabled=0 WHERE conversation_id=?",
+          ).run(c.id);
+          db.exec("RELEASE revoke_visitor_session");
+        } catch (error) {
+          db.exec(
+            "ROLLBACK TO revoke_visitor_session; RELEASE revoke_visitor_session",
+          );
+          throw error;
+        }
+        for (const peer of visitorPeers.get(c.id) || []) peer.end();
+        return send(res, 200, { ok: true });
+      }
       if (p === "/api/widget/push/device" || p === "/api/widget/push/status") {
         if (p.endsWith("/status") && method !== "GET")
           return send(res, 405, { error: "请求方法无效" });
@@ -503,6 +668,7 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/widget/attachments" && method === "POST") {
         const filename = uploadFilename(req),
           data = await readBinary(req);
+        uploadQuota("visitor:" + c.visitor_id, data.length);
         const result = storeAttachment(db, {
           conversationId: c.id,
           visitorId: c.visitor_id,
@@ -517,6 +683,8 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/widget/handoff" && method === "POST")
         return send(res, 200, service.handoff(c.id, "访客请求人工"));
       if (p === "/api/widget/events" && method === "GET") {
+        if ((visitorPeers.get(c.id)?.size || 0) >= 5)
+          throw new HttpError(429, "实时连接过多，请关闭重复窗口");
         res.writeHead(200, {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache, no-transform",
@@ -581,6 +749,13 @@ const server = http.createServer(async (req, res) => {
       )
         return send(res, 403, { error: "来源无效" });
       authorize(u, url, method);
+      const staffToken = (req.headers.cookie || "").match(
+        /(?:^|;\s*)fc_session=([^;]+)/,
+      )?.[1];
+      if (p !== "/api/logout") presence.touch(u.id, staffToken);
+      if (p === "/api/presence/heartbeat" && method === "POST")
+        return send(res, 200, { ok: true });
+      if (await operations.handle({ req, res, url, u, body, send })) return;
       if (
         await push.handle({
           req,
@@ -676,14 +851,15 @@ const server = http.createServer(async (req, res) => {
         const c = conversation(upload[1]);
         if (!c) return send(res, 404, { error: "会话不存在" });
         assertConversationAccess(u, c);
-        const data = await readBinary(req),
-          result = storeAttachment(db, {
-            conversationId: c.id,
-            user: u,
-            filename,
-            data,
-            clientId: req.headers["x-client-id"],
-          });
+        const data = await readBinary(req);
+        uploadQuota("staff:" + u.id, data.length);
+        const result = storeAttachment(db, {
+          conversationId: c.id,
+          user: u,
+          filename,
+          data,
+          clientId: req.headers["x-client-id"],
+        });
         broadcast(c.id);
         return send(res, 201, result);
       }
@@ -694,8 +870,9 @@ const server = http.createServer(async (req, res) => {
           !db.prepare("SELECT id FROM collections WHERE id=?").get(collectionId)
         )
           return send(res, 400, { error: "知识库不存在" });
-        const data = await readBinary(req),
-          parsed = await parseDocument(filename, data),
+        const data = await readBinary(req);
+        uploadQuota("staff:" + u.id, data.length);
+        const parsed = await parseDocument(filename, data),
           id = uid();
         db.exec("SAVEPOINT document_import");
         try {
@@ -789,7 +966,10 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/me") return send(res, 200, u);
       if (p === "/api/logout" && method === "POST") {
         const t = (req.headers.cookie || "").match(/fc_session=([^;]+)/)?.[1];
-        if (t) db.prepare("DELETE FROM sessions WHERE token=?").run(t);
+        if (t) {
+          db.prepare("DELETE FROM sessions WHERE token=?").run(t);
+          presence.drop(t);
+        }
         res.setHeader(
           "Set-Cookie",
           "fc_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0",
@@ -798,6 +978,8 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true });
       }
       if (p === "/api/events") {
+        if ([...peerUsers.values()].filter((id) => id === u.id).length >= 5)
+          throw new HttpError(429, "实时连接过多，请关闭重复窗口");
         res.writeHead(200, {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache, no-transform",
@@ -810,7 +992,10 @@ const server = http.createServer(async (req, res) => {
         peerUsers.set(res, u.id);
         const timer = setInterval(() => {
           if (!user(req)) res.end();
-          else res.write(": heartbeat\n\n");
+          else {
+            presence.touch(u.id, staffToken);
+            res.write(": heartbeat\n\n");
+          }
         }, 25000);
         res.on("close", () => {
           clearInterval(timer);
@@ -893,6 +1078,7 @@ const server = http.createServer(async (req, res) => {
           return send(res, 200, {
             conversation: {
               ...c,
+              assignment: service.assignment(c.id),
               profile: JSON.parse(c.profile || "{}"),
               assigneeName:
                 db.prepare("SELECT name FROM users WHERE id=?").get(c.assignee)
@@ -1229,11 +1415,41 @@ const server = http.createServer(async (req, res) => {
       res.end();
       return;
     }
-    send(res, e.status || 400, {
+    const status = e.status || (e instanceof SyntaxError ? 400 : 500);
+    if (e.retryAfter) res.setHeader("Retry-After", String(e.retryAfter));
+    if (status === 429 && req.url?.startsWith("/api/widget")) {
+      try {
+        channels.cors(req, res, new URL(req.url, "http://localhost"));
+      } catch {}
+    }
+    if (status >= 500) {
+      requestLog("request.error", {
+        requestId,
+        type: e.name,
+        code: e.code || "INTERNAL",
+        frames: e.stack
+          ?.split("\n")
+          .slice(1, 5)
+          .map((line) => line.trim()),
+      });
+      try {
+        operations.record("request.error", "failed");
+      } catch {}
+    }
+    send(res, status, {
       error:
-        e.message === "Unexpected end of JSON input"
-          ? "请求格式错误"
-          : e.message,
+        status >= 500
+          ? "服务暂时不可用，请稍后重试"
+          : e instanceof SyntaxError
+            ? "请求格式错误"
+            : e.message,
+      code:
+        status === 429
+          ? "RATE_LIMITED"
+          : status >= 500
+            ? "INTERNAL_ERROR"
+            : "REQUEST_REJECTED",
+      requestId,
     });
   }
 });
@@ -1245,3 +1461,23 @@ server.listen(
       `FastCat Support: http://${process.env.HOST || "127.0.0.1"}:${process.env.PORT || 4310}`,
     ),
 );
+
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  operations.close();
+  service.close();
+  for (const peer of peers) peer.end();
+  for (const group of visitorPeers.values())
+    for (const peer of group) peer.end();
+  server.close(() => {
+    try {
+      db.close();
+    } catch {}
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(0), 10000).unref();
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
