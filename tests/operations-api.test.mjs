@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { createHmac } from "node:crypto";
+import { createHmac, generateKeyPairSync } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 const dir = mkdtempSync(join(tmpdir(), "support-ops-")),
   path = join(dir, "test.db"),
@@ -231,6 +231,65 @@ test("offline explanation, human assignment, handover, outcomes and reviewed kno
     await api("/operations/knowledge-candidates")
   ).data.items.find((c) => c.id === candidate.data.id);
   assert.equal(record.state, "approved");
+});
+test("push settings are admin-only, encrypted, redacted and applied without restart", async () => {
+  let result = await api("/push-config");
+  assert.equal(result.status, 200);
+  assert.equal(result.data.channels.length, 3);
+  for (const method of ["GET", "PUT", "POST", "DELETE"]) {
+    const path =
+      method === "GET"
+        ? "/push-config"
+        : "/push-config/staff_apns" + (method === "POST" ? "/test" : "");
+    assert.equal(
+      (
+        await api(path, method, method === "GET" ? undefined : {}, {
+          Cookie: "fc_session=staff-session",
+        })
+      ).status,
+      403,
+    );
+  }
+  const credential = generateKeyPairSync("ec", {
+    namedCurve: "prime256v1",
+  }).privateKey.export({ type: "pkcs8", format: "pem" });
+  const config = {
+    keyId: "ABC1234567",
+    teamId: "TEAM123456",
+    topic: "com.fastcat.staff",
+  };
+  result = await api("/push-config/staff_apns", "PUT", {
+    expectedRevision: 0,
+    enabled: true,
+    config,
+    credential,
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.configured, true);
+  assert.ok(!JSON.stringify(result.data).includes("PRIVATE KEY"));
+  const db = new DatabaseSync(path);
+  const saved = db
+    .prepare("SELECT secret FROM push_settings WHERE channel='staff_apns'")
+    .get();
+  assert.ok(!saved.secret.includes(credential));
+  db.close();
+  assert.equal((await api("/operations/status")).data.push.staff.apns, true);
+  const disabled = await api("/push-config/staff_apns", "PUT", {
+    expectedRevision: result.data.revision,
+    enabled: false,
+    config,
+  });
+  assert.equal(disabled.status, 200);
+  assert.equal((await api("/operations/status")).data.push.staff.apns, false);
+  assert.equal(
+    (await api("/push-config/staff_apns/test", "POST", {})).status,
+    409,
+  );
+  const cleared = await api("/push-config/staff_apns", "DELETE", {
+    expectedRevision: disabled.data.revision,
+  });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.data.source, "environment");
 });
 test("backup can be created and revalidated through the admin interface", async () => {
   const created = await api("/operations/backups", "POST", {});

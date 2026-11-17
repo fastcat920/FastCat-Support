@@ -1,3 +1,4 @@
+import { renderPushSettings } from "./push-settings.js";
 import { renderOperations } from "./operations.js";
 export function createSettingsUI({
   api,
@@ -28,6 +29,7 @@ export function createSettingsUI({
       ...(me.role === "admin"
         ? [
             ["operations", "运行状态"],
+            ["push", "推送配置"],
             ["backups", "备份恢复"],
             ["quality", "服务质量"],
             ["improvements", "知识改进"],
@@ -48,6 +50,10 @@ export function createSettingsUI({
         })),
     );
     const el = document.querySelector("#settings-panel");
+    if (section === "push") {
+      el.classList.add("operations-panel");
+      return renderPushSettings(el, { api, E, toast });
+    }
     if (
       ["operations", "backups", "quality", "improvements"].includes(section)
     ) {

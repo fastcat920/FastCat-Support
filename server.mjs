@@ -1,3 +1,4 @@
+import { createPushSettings } from "./lib/push-settings.mjs";
 import { createOperations } from "./lib/operations.mjs";
 import {
   createLimiter,
@@ -201,8 +202,17 @@ function verify(p, v) {
   return timingSafeEqual(Buffer.from(h, "hex"), scryptSync(p, s, 64));
 }
 let service, telegram;
-const push = createPush(db);
-const userPush = createUserPush(db);
+const pushSettings = createPushSettings({
+  db,
+  keyPath: (process.env.DB_PATH || resolve(root, "data/support.db")) + ".key",
+});
+const push = createPush(db, {
+  transport: pushSettings.transport("staff_apns"),
+});
+const userPush = createUserPush(db, {
+  apns: pushSettings.transport("user_apns"),
+  fcm: pushSettings.transport("user_fcm"),
+});
 setInterval(() => {
   for (const [name, worker] of [
     ["user_push", userPush],
@@ -771,6 +781,7 @@ const server = http.createServer(async (req, res) => {
       )
         return;
       for (const integration of [
+        pushSettings,
         assistance,
         channels,
         telegram,

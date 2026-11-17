@@ -4887,3 +4887,22 @@ button[data-model-view].active {
   min-height: 0;
   margin: 8px 0;
 }
+
+.push-config-list {
+  display: grid;
+  gap: 20px;
+}
+.push-config-card {
+  min-width: 0;
+}
+.push-config-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+}
+.push-config-card input:not([type="checkbox"]) {
+  width: 100%;
+}
+.push-config-card .row {
+  flex-wrap: wrap;
+}

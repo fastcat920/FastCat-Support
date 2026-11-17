@@ -45,6 +45,18 @@ export function createAccessUI({ api, E, modal, toast }) {
     )
       previewUpdate?.(event.source);
   });
+  const refreshPreview = () =>
+    previewUpdate?.(
+      document.querySelector("#widget-design-preview")?.contentWindow,
+    );
+  new MutationObserver(refreshPreview).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme", "class", "lang"],
+  });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener(
+    "change",
+    refreshPreview,
+  );
   const setPlatformRoute = (id) => {
     const hash = id ? "#channel/" + encodeURIComponent(id) : "#channel";
     if (location.hash !== hash) history.pushState(null, "", hash);
@@ -92,7 +104,7 @@ export function createAccessUI({ api, E, modal, toast }) {
       const aside = target.querySelector(".platform-preview");
       aside.hidden = false;
       aside.innerHTML =
-        '<h3>实时预览</h3><p class="small">网页组件预览会实时显示未保存的外观；Flutter SDK 使用相同配置，界面以客户端实际效果为准。预览消息不会发送。</p>';
+        '<h3>实时预览</h3><label class="field">预览明暗模式<select id="platform-preview-theme" aria-label="预览明暗模式"><option value="follow">跟随当前设置</option><option value="light">浅色预览</option><option value="dark">深色预览</option></select></label><p class="small">此切换仅用于预览，不改变实际主题设置。</p><p class="small">网页组件预览会实时显示未保存的外观；Flutter SDK 使用相同配置，界面以客户端实际效果为准。预览消息不会发送。</p>';
       aside.append(preview);
       const launcher = document.createElement("div");
       launcher.className = "platform-launcher-preview";
@@ -520,10 +532,16 @@ export function createAccessUI({ api, E, modal, toast }) {
       for (const name of ["themeColorLight", "themeColorDark"])
         form.elements[name].parentElement.querySelector("output").textContent =
           form.elements[name].value.toUpperCase();
+      const hostTheme =
+        document.documentElement.dataset.theme ||
+        (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      const override = o.querySelector("#platform-preview-theme").value;
       const previewMode =
-        form.elements.theme.value === "auto"
-          ? document.documentElement.dataset.theme || "light"
-          : form.elements.theme.value;
+        override !== "follow"
+          ? override
+          : form.elements.theme.value === "auto"
+            ? hostTheme
+            : form.elements.theme.value;
       const previewColor =
         form.elements[
           previewMode === "dark" ? "themeColorDark" : "themeColorLight"
@@ -542,9 +560,9 @@ export function createAccessUI({ api, E, modal, toast }) {
             welcomeMessageEn: form.elements.welcomeMessageEn.value,
             logoUrl: logoURL,
             language: form.elements.language.value,
-            theme: form.elements.theme.value,
+            theme: previewMode,
             hostLanguage: document.documentElement.lang,
-            hostTheme: document.documentElement.dataset.theme,
+            hostTheme,
           },
         },
         location.origin,
@@ -587,6 +605,7 @@ export function createAccessUI({ api, E, modal, toast }) {
     previewUpdate = (source) => {
       if (o.isConnected && source === preview.contentWindow) update();
     };
+    o.querySelector("#platform-preview-theme").onchange = update;
     preview.addEventListener("load", update);
     o.querySelector("form").addEventListener("input", update);
     update();
