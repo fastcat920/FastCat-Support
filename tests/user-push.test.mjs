@@ -61,7 +61,7 @@ test("replies only notify the exact bound conversation, exclude internal/system 
   assert.ok(!JSON.stringify(calls[0].p).includes("secret1"));
   x.db.close();
 });
-test("foreground/read suppression, account switch and stale credentials cancel pending jobs", async () => {
+test("APNs survives stale foreground presence; read, account switch and stale credentials cancel pending jobs", async () => {
   let sent = 0;
   const x = setup({
     configured: true,
@@ -78,7 +78,8 @@ test("foreground/read suppression, account switch and stale credentials cancel p
   x.message("foreground");
   x.push.observe("c1");
   await x.push.drain();
-  assert.equal(sent, 0);
+  assert.equal(sent, 1);
+  sent = 0;
   x.advance();
   x.message("switch");
   x.push.observe("c1");
