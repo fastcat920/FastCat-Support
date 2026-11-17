@@ -39,9 +39,9 @@ test("replies only notify the exact bound conversation, exclude internal/system 
   const calls = [];
   const x = setup({
     configured: true,
-    send: async (d, p) => {
-      calls.push({ d, p });
-      return { status: 200 };
+    send: async (d, p, options) => {
+      calls.push({ d, p, options });
+      return { status: 200, requestId: options.requestId };
     },
   });
   x.bind(x.c1);
@@ -58,6 +58,13 @@ test("replies only notify the exact bound conversation, exclude internal/system 
   assert.equal(calls[0].p.type, "support.reply");
   assert.equal(calls[0].p.conversationId, "c1");
   assert.equal(calls[0].p.aps.badge, 1);
+  const audit = x.db.prepare("SELECT * FROM user_push_attempts").all();
+  assert.equal(audit.length, 1);
+  assert.equal(audit[0].request_id, calls[0].options.requestId);
+  assert.equal(audit[0].response_id, audit[0].request_id);
+  assert.equal(audit[0].status, 200);
+  assert.equal(audit[0].finished, audit[0].started);
+  assert.equal(audit[0].environment, "sandbox");
   assert.ok(!JSON.stringify(calls[0].p).includes("secret1"));
   x.db.close();
 });
