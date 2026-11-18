@@ -536,7 +536,7 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
             ]));
   }
 
-  Widget _message(Map m) {
+  Widget _message(Map m, {bool last = false}) {
     final own = m['role'] == 'visitor', pending = m['pending'] == true;
     final isImage = m['localBytes'] != null ||
         (m['attachment'] as Map?)?['mime']?.toString().startsWith('image/') ==
@@ -608,7 +608,7 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
                               color: fg.withValues(alpha: .7)))))
           ]);
     return Padding(
-        padding: const EdgeInsets.only(bottom: 20),
+        padding: EdgeInsets.only(bottom: last ? 0 : 20),
         child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment:
@@ -822,8 +822,7 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
                         },
                         child: ListView.builder(
                             controller: _scroll,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 18),
+                            padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
                             itemCount: _messages.length +
                                 (_typing ? 1 : 0) +
                                 (_pendingId != null ? 1 : 0),
@@ -851,7 +850,10 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
                                         english:
                                             _t('中文', 'English') == 'English')
                                   else
-                                    _message(m)
+                                    _message(m,
+                                        last: i == _messages.length - 1 &&
+                                            !_typing &&
+                                            _pendingId == null)
                                 ]);
                               }
                               if (_typing && i == _messages.length)
@@ -862,7 +864,7 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
                                   'body': _aiDraft.isEmpty
                                       ? _t('正在思考…', 'Thinking…')
                                       : _aiDraft
-                                });
+                                }, last: _pendingId == null);
                               return _message({
                                 'role': 'visitor',
                                 'body': _pendingFile?.filename ??
@@ -874,7 +876,7 @@ class _FastCatChatState extends State<FastCatChat> with WidgetsBindingObserver {
                                         .hasMatch(_pendingFile!.filename))
                                   'localBytes': _pendingFile!.bytes,
                                 'pending': true
-                              });
+                              }, last: true);
                             }))),
                 if (_error != null)
                   Padding(

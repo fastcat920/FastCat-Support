@@ -3546,7 +3546,7 @@ label:has(> input:is([type="checkbox"], [type="radio"])) {
   line-height: 1.5;
 }
 .widget-shell .messages {
-  padding: 22px 18px;
+  padding: 22px 18px 8px;
   gap: 18px;
 }
 .widget-shell .message {
