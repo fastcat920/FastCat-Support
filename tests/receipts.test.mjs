@@ -5,11 +5,31 @@ import {
   migrateReceipts,
   acknowledge,
   receiptState,
+  visitorUnreadState,
 } from "../lib/receipts.mjs";
+test("visitor unread snapshot excludes welcome, system and notes and follows shared read cursor", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE conversations(id TEXT PRIMARY KEY);CREATE TABLE messages(id TEXT PRIMARY KEY,conversation_id TEXT,role TEXT,source TEXT,read_at TEXT);INSERT INTO conversations VALUES('c')");
+  migrateReceipts(db);
+  const insert = db.prepare("INSERT INTO messages(id,conversation_id,role,source) VALUES(?,'c',?,?)");
+  insert.run('welcome','agent','welcome');
+  insert.run('system','agent','system');
+  insert.run('note','note','manual');
+  insert.run('reply','agent','manual');
+  const before = visitorUnreadState(db, 'c');
+  assert.equal(before.unreadCount, 1);
+  assert.equal(before.ownReadSeq, 0);
+  assert.equal(before.unreadLastSeq, 4);
+  acknowledge(db, 'c', 'visitor', {deliveredSeq:4,readSeq:4}, true);
+  const after = visitorUnreadState(db, 'c');
+  assert.equal(after.unreadCount, 0);
+  assert.equal(after.ownReadSeq, 4);
+  db.close();
+});
 test("message cursors remain monotonic, acknowledgements are explicit and notes/other conversations cannot be acknowledged by visitors", () => {
   const db = new DatabaseSync(":memory:");
   db.exec(
-    "CREATE TABLE conversations(id TEXT PRIMARY KEY);CREATE TABLE messages(id TEXT PRIMARY KEY,conversation_id TEXT,role TEXT,read_at TEXT);INSERT INTO conversations VALUES('a'),('b');INSERT INTO messages VALUES('old','a','visitor',null)",
+    "CREATE TABLE conversations(id TEXT PRIMARY KEY);CREATE TABLE messages(id TEXT PRIMARY KEY,conversation_id TEXT,role TEXT,read_at TEXT,source TEXT);INSERT INTO conversations VALUES('a'),('b');INSERT INTO messages VALUES('old','a','visitor',null,null)",
   );
   migrateReceipts(db);
   const insert = db.prepare(
