@@ -192,10 +192,10 @@ test("FCM signs OAuth assertion, reuses access token and maps unregistered devic
         sends++;
         assert.equal(options.headers.Authorization, "Bearer test-oauth");
         const b = JSON.parse(options.body);
-        assert.equal(
-          b.message.android.notification.channel_id,
-          "fastcat_support",
-        );
+        // Native delivery shares message-ID deduplication with the SSE path.
+        assert.equal(b.message.notification, undefined);
+        assert.equal(b.message.android.notification, undefined);
+        assert.equal(b.message.android.priority, "HIGH");
         assert.equal(b.message.data.conversationId, "c");
         return sends === 1
           ? { ok: true, json: async () => ({ name: "message" }) }
